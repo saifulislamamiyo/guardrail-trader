@@ -29,3 +29,6 @@ site/
 
 # personal agent notes (not published)
 CLAUDE.local.md
+
+# model eval outputs
+evals/results/
