@@ -11,7 +11,8 @@
 #   docker/secrets/tws_password.txt   IBKR password
 #   docker/secrets/vnc_password.txt   VNC password (for watching the gateway login screen)
 #
-# Host ports avoid the native setup (IB Gateway 4002, dashboard 8765) so both can coexist.
+# Gateway host ports avoid the native IB Gateway (4002/5900). The dashboard uses 8765, so run
+# `scripts/launchd.sh docker-mode` first (stops the native scheduler + dashboard, keeps keep-awake).
 # IBKR allows ONE session per username: only one of native IB Gateway / ib-gateway container
 # can be logged in at a time.
 name: guardrail-docker
@@ -73,12 +74,12 @@ services:
     restart: unless-stopped
     command: ["python", "scripts/dashboard.py", "--host", "0.0.0.0", "--no-browser"]
     environment:                    # least privilege: no API key in this container
-      LLM_MONTHLY_BUDGET_USD: ${LLM_MONTHLY_BUDGET_USD:-2.00}
+      LLM_MONTHLY_BUDGET_USD: ${LLM_MONTHLY_BUDGET_USD:-2.50}
     volumes:
       - ./data:/app/data            # read by the dashboard (SQLite needs rw for its lock files)
       - ./config:/app/config:ro
     ports:
-      - "127.0.0.1:18765:8765"      # private to this Mac
+      - "127.0.0.1:8765:8765"       # private to this Mac (same URL as the native dashboard)
     depends_on:
       - bot
 

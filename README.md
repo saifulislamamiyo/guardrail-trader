@@ -160,14 +160,18 @@ Three services in [`docker-compose.yml`](docker-compose.yml), one image built fr
 |---|---|
 | `ib-gateway` | [gnzsnz/ib-gateway](https://github.com/gnzsnz/ib-gateway-docker): IB Gateway + IBC (auto-login, daily restart). Paper login verified with no 2FA prompt. |
 | `bot` | [supercronic](https://github.com/aptible/supercronic) runs [`scripts/scheduled_run.py`](scripts/scheduled_run.py) every 15 min ([`docker/crontab`](docker/crontab)), connecting to `ib-gateway:4004` |
-| `dashboard` | the dashboard, published on `127.0.0.1:18765` only; no API key in this container |
+| `dashboard` | the dashboard, published on `127.0.0.1:8765` only; no API key in this container |
 
 ```bash
 cp .env.example .env                                  # bot settings + ANTHROPIC_API_KEY
 cp docker/gateway.env.example docker/gateway.env      # TWS_USERID=<paper username>
 printf '%s' 'your-password' > docker/secrets/tws_password.txt && chmod 600 docker/secrets/*
+scripts/launchd.sh docker-mode                        # stop native scheduler + dashboard, keep keep-awake
+# quit the native IB Gateway app (IBKR allows one session per username)
 docker compose build && docker compose up -d
 ```
+
+Rollback to native: `docker compose down`, reopen and log in to IB Gateway, then `scripts/launchd.sh install`.
 
 - IB Gateway only accepts localhost connections. Inside the image, socat forwards `0.0.0.0:4004` to `127.0.0.1:4002`, and the port check treats 4004/4003 as paper/live ([`config.py`](guardrail_trader/config.py)).
 - IBKR allows **one session per username**: stop the native IB Gateway before starting the `ib-gateway` container.
