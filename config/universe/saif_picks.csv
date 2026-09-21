@@ -1,0 +1,18 @@
+symbol,exchange,currency,name,source
+NVDA,SMART,USD,Nvidia,Saif pick
+AMZN,SMART,USD,Amazon,Saif pick
+AMD,SMART,USD,Advanced Micro Devices,Saif pick
+TMC,SMART,USD,TMC the metals company,Saif pick
+GOOGL,SMART,USD,Alphabet Inc. (Class A),Saif pick
+META,SMART,USD,Meta Platforms,Saif pick
+NFLX,SMART,USD,Netflix,Saif pick
+PANW,SMART,USD,Palo Alto Networks,Saif pick
+CRWD,SMART,USD,CrowdStrike,Saif pick
+FTNT,SMART,USD,Fortinet Inc,Saif pick
+CSCO,SMART,USD,Cisco Systems,Saif pick
+AVGO,SMART,USD,Broadcom,Saif pick
+NET,SMART,USD,Cloudflare,Saif pick
+OKTA,SMART,USD,Okta,Saif pick
+ZS,SMART,USD,Zscaler,Saif pick
+RBRK,SMART,USD,Rubrik Inc,Saif pick
+FFIV,SMART,USD,F5 Inc,Saif pick
