@@ -1,0 +1,22 @@
+# --- secrets: NEVER commit ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- runtime state: journal, transcripts, scheduler state, logs ---
+data/
+logs/
+*.sqlite
+*.sqlite-journal
+*.db
+*.log
+
+# --- python / tooling ---
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.DS_Store

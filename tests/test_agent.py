@@ -1,0 +1,80 @@
+"""Agent loop with a fake Claude and a stub market: no broker, no API."""
+import json
+from types import SimpleNamespace as NS
+
+from guardrail_trader.agent import MAX_HISTORY_CALLS, TradingAgent
+from guardrail_trader.fake_llm import FakeClaude
+from guardrail_trader.risk import Instrument, PortfolioState, RiskConfig
+
+UNI = {i.key: i for i in [Instrument("CSCO", "SMART", "USD"), Instrument("META", "SMART", "USD")]}
+CFG = RiskConfig(5000.0, "AUD", 25.0, 10, 25.0, 2.0, 10.0, False, UNI)
+
+
+class StubMarket:
+    prices = {"CSCO:USD": 110.0, "META:USD": 680.0}
+    fx = {"USD": 1.4}
+    history_calls = 0
+
+    def history_summary(self, key):
+        self.history_calls += 1
+        return {"last_close": self.prices[key]}
+
+    def commission_base(self, p):
+        return 1.4
+
+
+def agent(client, state=None):
+    return TradingAgent(client, CFG, state or PortfolioState(5000.0, peak_value_base=5000.0), StubMarket(),
+                        {"CSCO"}, log=lambda *_: None)
+
+
+def test_full_script_submits_gate_checked_order():
+    res = agent(FakeClaude("CSCO", 2, price_fn=lambda s: 110.0)).run()
+    assert res.submitted and res.turns == 5
+    (p,) = res.proposals
+    assert (p.symbol, p.action, p.quantity, p.exchange) == ("CSCO", "BUY", 2, "SMART")
+
+
+def test_universe_filters_unaffordable():
+    a = agent(FakeClaude())
+    out = a._universe({})  # max per holding A$1250; META = A$952 fits, CSCO fits
+    assert "CSCO" in out and "META" in out
+    a.max_pos_base = 200
+    out = a._universe({})
+    assert "CSCO" in out and "META" not in out
+
+
+def test_history_call_limit_enforced():
+    a = agent(FakeClaude())
+    for _ in range(MAX_HISTORY_CALLS):
+        _, err = a._dispatch("get_price_history", {"symbol": "CSCO"})
+        assert not err
+    out, err = a._dispatch("get_price_history", {"symbol": "CSCO"})
+    assert err and "limit" in out
+
+
+def test_non_allowlisted_symbol_is_a_tool_error_not_a_crash():
+    out, err = agent(FakeClaude())._dispatch("get_price_history", {"symbol": "TSLA"})
+    assert err and "allowlist" in out
+
+
+def test_check_orders_reports_gate_blocks():
+    out, err = agent(FakeClaude())._dispatch("check_orders", {"orders": [
+        {"symbol": "META", "currency": "USD", "action": "BUY", "quantity": 3, "limit_price": 680.0, "reason": "x"}]})
+    v = json.loads(out)[0]
+    assert not err and not v["approved"] and any("position would be" in r for r in v["block_reasons"])
+
+
+def test_claude_ending_without_submit_means_no_trades():
+    class Quitter:
+        messages = None
+
+        def __init__(self):
+            self.messages = self
+
+        def create(self, **kw):
+            return NS(content=[NS(type="text", text="I'll hold.")], stop_reason="end_turn",
+                      usage=NS(input_tokens=1, output_tokens=1))
+
+    res = agent(Quitter()).run()
+    assert not res.submitted and res.proposals == []
