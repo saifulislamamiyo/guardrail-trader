@@ -115,7 +115,7 @@ both in [`agent.py`](guardrail_trader/agent.py).
 |---|---|---|
 | Virtual trading capital | A$5,000 during the paper phase | [`config/risk.toml`](config/risk.toml) `[budget]` · [`journal.py`](guardrail_trader/journal.py) → `init_budget()` |
 | LLM cost per run | stop at **US$0.10**, no trades | `.env` `LLM_RUN_BUDGET_USD` · [`agent.py`](guardrail_trader/agent.py) → `TradingAgent.run()` |
-| LLM cost per month | skip runs once **US$2.00** is spent | `.env` `LLM_MONTHLY_BUDGET_USD` · [`run_bot.py`](scripts/run_bot.py) step 4 · [`journal.py`](guardrail_trader/journal.py) → `llm_spend_usd()` |
+| LLM cost per month | skip runs once **US$2.50** is spent | `.env` `LLM_MONTHLY_BUDGET_USD` · [`run_bot.py`](scripts/run_bot.py) step 4 · [`journal.py`](guardrail_trader/journal.py) → `llm_spend_usd()` |
 | Cost measured from real usage | tokens × published prices (incl. cache and web search) | [`llm.py`](guardrail_trader/llm.py) → `PRICES`, `cost_usd()` · table `llm_usage` |
 | Unpriced models refused | a model with no known price can't be used | [`llm.py`](guardrail_trader/llm.py) → `model()` |
 | Prompt caching | system prompt, tools and conversation prefix cached | [`agent.py`](guardrail_trader/agent.py) → `run()`, `_move_cache_breakpoint()` |
