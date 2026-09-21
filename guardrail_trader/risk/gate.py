@@ -12,6 +12,7 @@ Configurable rules come from config/risk.toml.
 from __future__ import annotations
 
 import copy
+import math
 from dataclasses import dataclass, field
 
 from guardrail_trader.risk.config import RiskConfig, instrument_key
@@ -124,6 +125,8 @@ def _check(p: Proposal, sim: PortfolioState, market: dict[str, MarketInfo], cfg:
         r.append(f"{p.key} is not on the allowlist")
     elif cfg.universe[p.key].exchange != p.exchange.upper():
         r.append(f"{p.key} must trade on {cfg.universe[p.key].exchange}, not {p.exchange}")
+    if not (math.isfinite(p.quantity) and math.isfinite(p.limit_price)):
+        return [f"quantity and limit price must be finite numbers, got {p.quantity} @ {p.limit_price}"]
     if not p.quantity > 0:
         r.append(f"quantity must be > 0, got {p.quantity}")
     elif not cfg.allow_fractional and p.quantity != int(p.quantity):

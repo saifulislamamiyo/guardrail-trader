@@ -42,3 +42,24 @@ def test_holdings_pnl_and_decisions(j):
     assert {x["symbol"]: x["approved"] for x in d["decisions"]} == {"CSCO": 1, "META": 0}
     assert d["decisions"][-1]["order_status"] == "Filled"
     assert d["runs"][0]["approved"] == 1 and d["runs"][0]["blocked"] == 1
+
+
+def test_dashboard_rejects_foreign_host_headers(monkeypatch):
+    """DNS rebinding: only localhost Host headers are served."""
+    import importlib.util
+    from guardrail_trader.config import PROJECT_ROOT
+    spec = importlib.util.spec_from_file_location("dash", PROJECT_ROOT / "scripts" / "dashboard.py")
+    dash = importlib.util.module_from_spec(spec); spec.loader.exec_module(dash)
+    monkeypatch.delenv("DASHBOARD_ALLOWED_HOSTS", raising=False)
+    hosts = dash.allowed_hosts(8765)
+    assert hosts == {"127.0.0.1:8765", "localhost:8765"}
+    assert "attacker.example:8765" not in hosts
+    monkeypatch.setenv("DASHBOARD_ALLOWED_HOSTS", "Dash.lan:8765")
+    assert "dash.lan:8765" in dash.allowed_hosts(8765)
+
+
+def test_executor_refuses_blocked_decision():
+    from guardrail_trader.executor import execute
+    blocked = Decision(Proposal("CSCO", "SMART", "USD", "BUY", 1, 100.0, "x"), False, ["no"])
+    with pytest.raises(RuntimeError):
+        execute(broker=None, journal=None, decisions=[(1, blocked)], fx={})

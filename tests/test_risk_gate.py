@@ -155,3 +155,9 @@ def test_invalid_config_refuses_to_load(tmp_path: Path):
                    'max_trades_per_month=10\nmax_drawdown_pct=25\nmax_price_deviation_pct=2\nmax_commission_pct=10\n')
     with pytest.raises(ValueError):
         load_risk_config(bad)
+
+
+@pytest.mark.parametrize("qty,px", [(float("inf"), 5.0), (float("nan"), 5.0), (4, float("inf")), (4, float("nan"))])
+def test_non_finite_numbers_blocked_not_crashed(qty, px):
+    d = one(buy(qty=qty, px=px))  # e.g. a model sending "inf" as a quantity
+    assert not d.approved and d.reasons

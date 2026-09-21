@@ -64,6 +64,21 @@ In Docker: `docker compose logs -f bot` and `docker compose logs -f ib-gateway`.
 
 In Docker, prefix with `docker compose exec bot python` instead of `.venv/bin/python`.
 
+## Dependencies and pinning
+
+| What | Pinned by | Updated by |
+|---|---|---|
+| Python packages (image, CI) | `requirements/*.txt` with sha256 hashes, installed with `--require-hashes` | Dependabot, or `uv pip compile pyproject.toml --universal --python-version 3.13 --generate-hashes -o requirements/runtime.txt` |
+| Base image, IB Gateway image | digest (`@sha256:…`) | Dependabot |
+| GitHub Actions | commit SHA | Dependabot |
+| supercronic | SHA-256 of the release binary | manual |
+
+## Dashboard hardening
+
+The dashboard answers only requests addressed to `127.0.0.1:<port>` or `localhost:<port>`, so a
+web page on another domain can't read it through DNS rebinding. To reach it by another name
+(e.g. behind a reverse proxy), set `DASHBOARD_ALLOWED_HOSTS=name:port`.
+
 ## Troubleshooting
 
 ??? question "IB Gateway: *softProtocols missing required protocols*, then a re-login loop"

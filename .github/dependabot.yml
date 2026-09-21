@@ -1,11 +1,14 @@
 version: 2
 updates:
-  - package-ecosystem: pip
+  - package-ecosystem: pip            # hash-locked requirements/*.txt (regenerate with uv pip compile)
+    directory: /requirements
+    schedule: { interval: monthly }
+  - package-ecosystem: github-actions # Actions are pinned to commit SHAs
     directory: /
     schedule: { interval: monthly }
-  - package-ecosystem: github-actions
+  - package-ecosystem: docker         # Dockerfile base image digest
     directory: /
     schedule: { interval: monthly }
-  - package-ecosystem: docker
+  - package-ecosystem: docker-compose # ib-gateway image digest
     directory: /
     schedule: { interval: monthly }

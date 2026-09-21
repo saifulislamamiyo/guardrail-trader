@@ -72,6 +72,16 @@ flowchart TB
 | `bot` | [supercronic](https://github.com/aptible/supercronic) runs `scheduled_run.py` every 15 min ([`docker/crontab`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/docker/crontab)); healthcheck on the scheduler heartbeat | none |
 | `dashboard` | `dashboard.py` bound to `0.0.0.0` inside the container; no API key in its environment | 8765 |
 
+Networks are split so that **only the bot can reach the IB Gateway API**, which has no
+authentication of its own:
+
+| Network | Members | Purpose |
+|---|---|---|
+| `broker` (internal, no route out) | `ib-gateway`, `bot` | the IB API on port 4004 |
+| `gateway_egress` | `ib-gateway` | IBKR servers, localhost-only host ports |
+| `bot_egress` | `bot` | Claude API |
+| `web` | `dashboard` | `127.0.0.1:8765` on the host |
+
 `data/`, `logs/` and `config/` (read-only) are bind-mounted from the project folder, so the journal
 is the same file in both modes.
 

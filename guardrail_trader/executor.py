@@ -31,7 +31,8 @@ def execute(decisions: list[tuple[int, Decision]], broker: IBKRBroker, journal: 
     """
     placed: list[tuple[int, Decision, int]] = []
     for pid, d in decisions:
-        assert d.approved, "executor received a blocked decision"
+        if not d.approved:  # explicit, not assert: asserts are stripped under python -O
+            raise RuntimeError(f"executor received a blocked decision: {d.proposal}")
         p = d.proposal
         contract = broker.stock(p.symbol, p.exchange, p.currency)
         r = broker.place_order(contract, p.action, p.quantity, limit_price=p.limit_price, wait_seconds=2)

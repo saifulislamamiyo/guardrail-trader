@@ -21,7 +21,8 @@ services:
   ib-gateway:
     # No settings volume: IBC re-applies config from env on every start (a fresh named
     # volume is root-owned and IB Gateway runs as uid 1000 -> 'jts.ini: Permission denied').
-    image: ghcr.io/gnzsnz/ib-gateway:10.45.1h      # "stable" channel, same version as the native app
+    # "stable" channel 10.45.1h, pinned by digest (Dependabot bumps it)
+    image: ghcr.io/gnzsnz/ib-gateway:10.45.1h@sha256:d39c30526f2c20b37fa5ae89d81057e93d9c37fccd11120b68d8d2b1f2c80b66
     restart: unless-stopped
     env_file: docker/gateway.env                   # TWS_USERID
     environment:
@@ -40,6 +41,7 @@ services:
     secrets:
       - tws_password
       - vnc_password
+    networks: [broker, gateway_egress]   # broker: bot only; egress: IBKR servers
     ports:
       # socat inside the image forwards 0.0.0.0:4004 -> 127.0.0.1:4002, so IB Gateway still
       # only ever sees localhost connections. 4004 is reachable from this compose network;
@@ -62,6 +64,7 @@ services:
       - ./config:/app/config:ro     # risk.toml + universe (edit on host, no rebuild)
     depends_on:
       - ib-gateway
+    networks: [broker, bot_egress]       # broker: IB Gateway API; egress: Claude API
     healthcheck:                    # scheduler heartbeat must be < 20 min old
       test: ["CMD", "python", "-c", "import json,sys,datetime as d; t=d.datetime.fromisoformat(json.load(open('/app/data/scheduler_heartbeat.json'))['last_tick_ny']); sys.exit(0 if (d.datetime.now(d.timezone.utc)-t).total_seconds()<1200 else 1)"]
       interval: 5m
@@ -80,8 +83,14 @@ services:
       - ./config:/app/config:ro
     ports:
       - "127.0.0.1:8765:8765"       # private to this Mac (same URL as the native dashboard)
-    depends_on:
-      - bot
+    networks: [web]                 # cannot reach ib-gateway: the IB API has no auth
+
+networks:
+  broker:            # IB Gateway API. internal = no route in or out; only ib-gateway + bot attached
+    internal: true
+  gateway_egress: {} # ib-gateway -> IBKR servers (and the 127.0.0.1-only host ports)
+  bot_egress: {}     # bot -> Claude API
+  web: {}            # dashboard -> 127.0.0.1:8765 on the host
 
 secrets:
   tws_password:
