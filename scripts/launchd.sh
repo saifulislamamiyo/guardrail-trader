@@ -1,6 +1,7 @@
 #!/bin/zsh
 # Install / uninstall / show the macOS LaunchAgents that run guardrail-trader unattended.
-#   scripts/launchd.sh install | docker-mode | uninstall | status
+#   scripts/launchd.sh install | docker-mode | render | uninstall | status
+#   render       print the plists that would be installed (review before installing)
 #   install      native mode: scheduler + keep-awake + dashboard
 #   docker-mode  Docker runs scheduler + dashboard; only keep-awake stays on the host
 #   keep-awake runs 23:00 local -> 16:00 New York on US trading nights (scripts/keep_awake.py)
@@ -9,6 +10,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PY="$ROOT/.venv/bin/python"
 LA="$HOME/Library/LaunchAgents"
+[[ "${1:-}" == "render" ]] && LA="$(mktemp -d)"   # render: write to a temp dir, print, install nothing
 DOMAIN="gui/$(id -u)"
 LABELS=(com.guardrail-trader.scheduler com.guardrail-trader.awake com.guardrail-trader.dashboard)
 mkdir -p "$LA" "$ROOT/logs"
@@ -83,6 +85,13 @@ case "${1:-status}" in
     launchctl bootout "$DOMAIN/com.guardrail-trader.awake" 2>/dev/null || true
     launchctl bootstrap "$DOMAIN" "$LA/com.guardrail-trader.awake.plist"
     echo "docker-mode: only com.guardrail-trader.awake is loaded"
+    ;;
+  render)
+    plist com.guardrail-trader.scheduler false 900 "$PY" "$ROOT/scripts/scheduled_run.py"
+    plist com.guardrail-trader.dashboard true 0 "$PY" "$ROOT/scripts/dashboard.py" --no-browser
+    awake_plist
+    for f in "$LA"/*.plist; do echo "===== $(basename "$f") ====="; cat "$f"; done
+    rm -rf "$LA"
     ;;
   uninstall)
     for l in $LABELS; do launchctl bootout "$DOMAIN/$l" 2>/dev/null || true; rm -f "$LA/$l.plist"; done

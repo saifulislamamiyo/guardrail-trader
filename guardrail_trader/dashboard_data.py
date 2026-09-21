@@ -91,6 +91,11 @@ def build(j: Journal, cfg: RiskConfig) -> dict:
     llm_months = _rows(j, "SELECT substr(ts,1,7) month, SUM(cost_usd) cost, COUNT(DISTINCT run_id) runs, "
                           "SUM(input_tokens) tin, SUM(output_tokens) tout FROM llm_usage GROUP BY month ORDER BY month")
 
+    # Brokerage actually paid: commission on booked fills, converted to the base currency.
+    brk = _rows(j, "SELECT COUNT(*) n, COALESCE(SUM(commission * fx_to_base), 0) paid, "
+                   "COALESCE(SUM(ABS(quantity * price) * fx_to_base), 0) traded "
+                   "FROM ledger WHERE kind IN ('BUY', 'SELL')")[0]
+
     halted_reason = j._get("halted_reason", "") or ""
     scheduler = _scheduler_status()
     return {
@@ -102,6 +107,7 @@ def build(j: Journal, cfg: RiskConfig) -> dict:
             "orders_this_month": j.orders_this_month(), "orders_limit": cfg.max_trades_per_month,
             "llm_month_usd": j.llm_spend_usd(), "llm_month_cap_usd": llm.monthly_budget_usd(),
             "llm_lifetime_usd": j.llm_spend_usd("all"),
+            "brokerage_base": brk["paid"], "brokerage_fills": brk["n"], "traded_base": brk["traded"],
             "halted": j.is_halted(), "halted_reason": halted_reason,
             "value_as_of": last_valued["finished_at"] if last_valued else None,
             "last_run": runs[-1] if runs else None,

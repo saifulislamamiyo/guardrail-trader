@@ -200,6 +200,9 @@ function renderKpis(d) {
     [`Cash (${c})`, money(k.cash), `${k.value ? (k.cash / k.value * 100).toFixed(0) : 0}% of portfolio`],
     ["Drawdown from peak", k.drawdown_pct.toFixed(2) + "%", `kill switch at ${k.kill_switch_pct}% · peak ${money(k.peak, c, 0)}`, ddPct],
     ["Orders this month", `${k.orders_this_month} / ${k.orders_limit}`, "counted when submitted", ordPct],
+    [`Brokerage paid (${c})`, money(k.brokerage_base), k.brokerage_fills
+      ? `${k.brokerage_fills} fills · ${(k.brokerage_base / Math.max(k.traded_base, 1e-9) * 100).toFixed(2)}% of ${money(k.traded_base, c, 0)} traded`
+      : "no fills yet"],
     ["LLM spend this month", "US$" + k.llm_month_usd.toFixed(2), `cap US$${k.llm_month_cap_usd.toFixed(2)} · lifetime US$${k.llm_lifetime_usd.toFixed(2)}`, llmPct],
     ["Last run", lr ? `<span style="font-size:18px">${when(lr.started_at)}</span>` : "–", lr ? `#${lr.id} · ${lr.mode} · ${lr.status}` : "no runs yet"],
   ];

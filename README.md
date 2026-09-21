@@ -10,6 +10,8 @@ decides whether any of them are allowed to reach the broker.
 ⚠️ Runs against an IBKR **paper** (simulated) account by default. This is an engineering project,
 not investment advice. Automated trading can lose money.
 
+📖 **Docs:** https://saifulislamamiyo.github.io/guardrail-trader/
+
 ---
 
 ## How it works
@@ -72,7 +74,7 @@ All tunable values live in [`config/risk.toml`](config/risk.toml). Every rule ha
 | **Fill accounting** | Only real fills are booked (partial fills handled; unfilled orders cancelled). | [`executor.py`](guardrail_trader/executor.py) → `execute()` · [`broker/ibkr.py`](guardrail_trader/broker/ibkr.py) → `fill_details()` |
 | **Market-hours check** | Uses IBKR's own trading hours (holidays included); won't trade with less than 15 minutes to the close. | [`market.py`](guardrail_trader/market.py) → `market_sessions()`, `is_open()` |
 | **Tool-error handling** | Tool errors go back to Claude as `is_error` results instead of crashing the loop. | [`agent.py`](guardrail_trader/agent.py) → `_dispatch()` |
-| **Observability** | Every proposal, Claude's reason, the gate verdict, orders, fills and LLM cost are recorded. Full transcripts are saved per run. | [`journal.py`](guardrail_trader/journal.py) · `data/runs/run_<id>.json` · [Dashboard](#dashboard) |
+| **Observability** | Every proposal, Claude's reason, the gate verdict, orders, fills and LLM cost are recorded. Full transcripts are saved per run. | [`journal.py`](guardrail_trader/journal.py) · `data/runs/run_<id>.json` · [Dashboard](https://saifulislamamiyo.github.io/guardrail-trader/dashboard/) |
 | **Scheduling** | Runs at New York-time slots (handles both US and Sydney daylight saving), at most 3 attempts per slot, file lock against overlapping runs. | [`scripts/scheduled_run.py`](scripts/scheduled_run.py) → `SLOTS`, `MAX_ATTEMPTS`, `current_slot()` |
 
 ---
@@ -126,114 +128,28 @@ both in [`agent.py`](guardrail_trader/agent.py).
 
 ---
 
-## Quick start (macOS, paper account)
+## Quick start
 
-Prerequisites: Python 3.11+, an IBKR account with a paper (or free-trial) login, and
-[IB Gateway](https://www.interactivebrokers.com.au/en/trading/ibgateway-stable.php) logged in to
-**Paper**, with the API enabled on port **4002** and localhost only.
-
-```bash
-python3 -m venv .venv
-.venv/bin/pip install -e ".[dev]" pandas lxml openpyxl requests
-cp .env.example .env                                   # add ANTHROPIC_API_KEY (or OpenRouter)
-
-.venv/bin/python scripts/check_connection.py           # read-only IBKR check
-.venv/bin/python scripts/journal_cli.py init           # deposit the virtual budget (once)
-.venv/bin/python scripts/run_bot.py --dry-run --fake-claude   # whole harness, no API cost, no orders
-.venv/bin/python scripts/run_bot.py --dry-run          # real Claude, nothing sent to IBKR
-.venv/bin/python scripts/run_bot.py                    # paper trading (market must be open)
-```
-
-### Run unattended
+Full guides: **[native (launchd)](https://saifulislamamiyo.github.io/guardrail-trader/setup-native/)** ·
+**[Docker](https://saifulislamamiyo.github.io/guardrail-trader/setup-docker/)** ·
+[how to set your own rules and universe](https://saifulislamamiyo.github.io/guardrail-trader/configuration/) ·
+[dashboard](https://saifulislamamiyo.github.io/guardrail-trader/dashboard/) ·
+[operations](https://saifulislamamiyo.github.io/guardrail-trader/operations/)
 
 ```bash
-scripts/launchd.sh install    # scheduler (every 15 min), keep-awake, dashboard
-scripts/launchd.sh status
-scripts/launchd.sh uninstall
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev,tools]"
+cp .env.example .env                                         # API key; TRADING_MODE=paper
+.venv/bin/python scripts/check_connection.py                 # IB Gateway (paper) on 4002
+.venv/bin/python scripts/journal_cli.py init                 # deposit the virtual budget (once)
+.venv/bin/python scripts/run_bot.py --dry-run --fake-claude  # whole harness, no cost, no orders
 ```
 
-### Run in Docker (alternative to launchd)
+**Native:** `scripts/launchd.sh render` (review) → `scripts/launchd.sh install`.
 
-Three services in [`docker-compose.yml`](docker-compose.yml), one image built from the [`Dockerfile`](Dockerfile):
+**Docker:** add `docker/gateway.env` and `docker/secrets/*.txt`, then
+`scripts/launchd.sh docker-mode && docker compose up -d --build`.
 
-| Service | What it runs |
-|---|---|
-| `ib-gateway` | [gnzsnz/ib-gateway](https://github.com/gnzsnz/ib-gateway-docker): IB Gateway + IBC (auto-login, daily restart). Paper login verified with no 2FA prompt. |
-| `bot` | [supercronic](https://github.com/aptible/supercronic) runs [`scripts/scheduled_run.py`](scripts/scheduled_run.py) every 15 min ([`docker/crontab`](docker/crontab)), connecting to `ib-gateway:4004` |
-| `dashboard` | the dashboard, published on `127.0.0.1:8765` only; no API key in this container |
-
-```bash
-cp .env.example .env                                  # bot settings + ANTHROPIC_API_KEY
-cp docker/gateway.env.example docker/gateway.env      # TWS_USERID=<paper username>
-printf '%s' 'your-password' > docker/secrets/tws_password.txt && chmod 600 docker/secrets/*
-scripts/launchd.sh docker-mode                        # stop native scheduler + dashboard; keep-awake 23:00 Sydney -> 16:00 New York
-# quit the native IB Gateway app (IBKR allows one session per username)
-docker compose build && docker compose up -d
-```
-
-Rollback to native: `docker compose down`, reopen and log in to IB Gateway, then `scripts/launchd.sh install`.
-
-- IB Gateway only accepts localhost connections. Inside the image, socat forwards `0.0.0.0:4004` to `127.0.0.1:4002`, and the port check treats 4004/4003 as paper/live ([`config.py`](guardrail_trader/config.py)).
-- IBKR allows **one session per username**: stop the native IB Gateway before starting the `ib-gateway` container.
-- `data/`, `logs/` and `config/` are bind-mounted from the project folder, so the journal and `journal_cli.py` work the same as the native setup.
-- The Mac must still be awake. The containers run in Docker Desktop's VM, which pauses when the Mac sleeps.
-
-### See what it did
-
-```bash
-.venv/bin/python scripts/dashboard.py        # http://127.0.0.1:8765 — see "Dashboard" below
-.venv/bin/python scripts/journal_cli.py status   # same data in the terminal
-```
-
----
-
-## Dashboard
-
-A local web page that shows everything the bot has done. It is **read-only**: it reads the
-journal and scheduler files, and never connects to IBKR or places orders. It listens on
-`127.0.0.1` only.
-
-```bash
-.venv/bin/python scripts/dashboard.py              # opens http://127.0.0.1:8765
-.venv/bin/python scripts/dashboard.py --port 9000 --no-browser
-```
-
-When the LaunchAgents are installed ([`scripts/launchd.sh install`](scripts/launchd.sh)), the dashboard runs all the
-time as `com.guardrail-trader.dashboard` and restarts if it crashes. The page refreshes every
-60 seconds and has a light/dark toggle.
-
-| Section | What it shows |
-|---|---|
-| **Summary tiles** | Portfolio value, profit/loss vs starting capital, cash, drawdown (meter towards the kill switch), orders this month vs limit, LLM spend vs monthly cap, last run, **scheduler health** (running or silent, plus the next slot in Sydney time) |
-| **Kill-switch banner** | Red banner, with the reset command, when trading is halted |
-| **Portfolio value chart** | Value at the end of each run against a dashed starting-capital line; hover for run details |
-| **Holdings** | Quantity, average cost (incl. commission), latest price, value, profit/loss, weight |
-| **Decisions** | Every order Claude proposed: the gate verdict and block reasons, what IBKR did with it (filled / partial / not filled / dry run), and Claude's reason. Filters: all · approved · blocked · hide dry/fake runs |
-| **Runs** | Mode, status, value, approved/blocked counts, LLM cost. **Click a run to open Claude's step-by-step transcript**: every tool call and result |
-| **Fills** | What actually executed at IBKR and was booked in the ledger |
-| **LLM spend** | Cost, runs and tokens per month |
-
-**Where it's implemented**
-
-| Piece | File |
-|---|---|
-| HTTP server (Python standard library only; `/`, `/api/data`, `/api/transcript/<run_id>`) | [`scripts/dashboard.py`](scripts/dashboard.py) |
-| Data layer: journal queries, average cost, scheduler status, transcript simplifier | [`guardrail_trader/dashboard_data.py`](guardrail_trader/dashboard_data.py) → `build()`, `transcript()`, `_scheduler_status()` |
-| Page (HTML/CSS/JS, inline SVG chart, no external dependencies) | [`guardrail_trader/web/dashboard.html`](guardrail_trader/web/dashboard.html) |
-| Holdings prices per run (so the dashboard needs no broker) | [`journal.py`](guardrail_trader/journal.py) → `finish_run()` writes the `snapshots` table |
-| Scheduler heartbeat and slot history | `data/scheduler_heartbeat.json`, `data/scheduler_state.json` (written by [`scripts/scheduled_run.py`](scripts/scheduled_run.py)) |
-| Tests | [`tests/test_dashboard.py`](tests/test_dashboard.py) |
-
----
-
-## Configuration
-
-| File | Purpose |
-|---|---|
-| `.env` (never committed) | API keys, LLM provider/model, spend caps, IBKR host/port/mode |
-| [`config/risk.toml`](config/risk.toml) | Budget, risk limits, universe files |
-| [`config/universe/saif_picks.csv`](config/universe/saif_picks.csv) | Owner-picked tickers |
-| [`config/universe/top_sp500.csv`](config/universe/top_sp500.csv) | Largest S&P 500 names by SPY weight, which top the universe up to 50; refresh monthly with [`scripts/refresh_universe.py`](scripts/refresh_universe.py) |
+Dashboard: <http://127.0.0.1:8765>
 
 ---
 

@@ -37,6 +37,8 @@ def test_holdings_pnl_and_decisions(j):
     assert h["avg_cost_base"] == pytest.approx(154.7) and h["price_base"] == pytest.approx(168.0)
     assert h["pnl_base"] == pytest.approx((168.0 - 154.7) * 2)
     assert d["kpis"]["value"] == pytest.approx(5000 - 309.4 + 336.0)
+    assert d["kpis"]["brokerage_base"] == pytest.approx(1.4) and d["kpis"]["brokerage_fills"] == 1
+    assert d["kpis"]["traded_base"] == pytest.approx(308.0)
     assert {x["symbol"]: x["approved"] for x in d["decisions"]} == {"CSCO": 1, "META": 0}
     assert d["decisions"][-1]["order_status"] == "Filled"
     assert d["runs"][0]["approved"] == 1 and d["runs"][0]["blocked"] == 1

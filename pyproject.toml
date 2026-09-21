@@ -13,6 +13,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest"]
 tools = ["pandas", "lxml", "openpyxl", "requests"]   # scripts/refresh_universe.py
+docs = ["mkdocs<2", "mkdocs-material", "playwright"]             # docs site + dashboard screenshots
 
 [build-system]
 requires = ["setuptools>=68"]
