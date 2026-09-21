@@ -79,6 +79,17 @@ The dashboard answers only requests addressed to `127.0.0.1:<port>` or `localhos
 web page on another domain can't read it through DNS rebinding. To reach it by another name
 (e.g. behind a reverse proxy), set `DASHBOARD_ALLOWED_HOSTS=name:port`.
 
+**Cloudflare tunnel:** have cloudflared rewrite the Host header to the local one:
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:8765 --http-host-header 127.0.0.1:8765
+```
+
+!!! warning "A quick tunnel is public"
+    Anyone with the `*.trycloudflare.com` link sees your portfolio, decisions and Claude
+    transcripts; there is no login. For regular use, run a named tunnel behind
+    Cloudflare Access (email login).
+
 ## Troubleshooting
 
 ??? question "IB Gateway: *softProtocols missing required protocols*, then a re-login loop"
