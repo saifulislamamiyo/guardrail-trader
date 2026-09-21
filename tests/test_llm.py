@@ -18,11 +18,13 @@ def test_cost_formula_sonnet5():
 
 
 def test_llm_module_loads_dotenv_on_import():
-    """Regression: importing llm alone must pick up .env (caps were silently defaulting)."""
+    """Regression: importing llm alone must load the project .env (caps were silently defaulting).
+
+    Runs in a fresh interpreter with load_dotenv patched, so it passes with or without a real .env (CI)."""
     import subprocess
     import sys
-    code = ("import os; from guardrail_trader import llm; "
-            "print(os.getenv('LLM_MONTHLY_BUDGET_USD') is not None)")
+    code = ("import dotenv; calls = []; dotenv.load_dotenv = lambda *a, **k: calls.append(str(a[0]) if a else '');"
+            "from guardrail_trader import llm; print(any(c.endswith('.env') for c in calls))")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout.strip()
     assert out == "True"
 
