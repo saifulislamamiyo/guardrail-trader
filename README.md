@@ -166,7 +166,7 @@ Three services in [`docker-compose.yml`](docker-compose.yml), one image built fr
 cp .env.example .env                                  # bot settings + ANTHROPIC_API_KEY
 cp docker/gateway.env.example docker/gateway.env      # TWS_USERID=<paper username>
 printf '%s' 'your-password' > docker/secrets/tws_password.txt && chmod 600 docker/secrets/*
-scripts/launchd.sh docker-mode                        # stop native scheduler + dashboard, keep keep-awake
+scripts/launchd.sh docker-mode                        # stop native scheduler + dashboard; keep-awake 23:00 Sydney -> 16:00 New York
 # quit the native IB Gateway app (IBKR allows one session per username)
 docker compose build && docker compose up -d
 ```
