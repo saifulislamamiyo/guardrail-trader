@@ -4,6 +4,8 @@
 #   docker compose logs -f ib-gateway
 #   docker compose down
 #
+# No settings volume: IBC re-applies config from env on every start (a fresh named
+# volume is root-owned and IB Gateway runs as uid 1000 -> 'jts.ini: Permission denied').
 # Host ports are deliberately NOT 4002/5900 so this can run beside the native IB Gateway.
 name: guardrail-docker
 
@@ -25,9 +27,6 @@ services:
       RELOGIN_AFTER_TWOFA_TIMEOUT: "yes"
       # Never kick an existing session (e.g. the native IB Gateway the current bot uses).
       EXISTING_SESSION_DETECTED_ACTION: secondary
-      TWS_SETTINGS_PATH: /home/ibgateway/tws_settings
-    volumes:
-      - gateway-settings:/home/ibgateway/tws_settings
     secrets:
       - tws_password
       - vnc_password
@@ -41,5 +40,3 @@ secrets:
   vnc_password:
     file: docker/secrets/vnc_password.txt
 
-volumes:
-  gateway-settings:
