@@ -33,8 +33,12 @@ Implemented in [`agent.py`](https://github.com/saifulislamamiyo/guardrail-trader
 
 - Claude calls `submit_orders` (an empty list means "hold"),
 - Claude ends its turn without submitting, which means **no trades**,
-- `MAX_TURNS` (20) is reached, or
-- the per-run cost budget is exceeded.
+- `MAX_TURNS` (20) is reached,
+- the per-run cost budget is exceeded, or
+- the loop runs longer than `AGENT_MAX_SECONDS` (300 s). Each API call also has a timeout
+  (`LLM_REQUEST_TIMEOUT_S`, 60 s, capped by the time left) and at most 2 retries.
+
+Every one of these ends the run with **no trades**.
 
 ## Tools Claude gets
 
@@ -44,9 +48,32 @@ Implemented in [`agent.py`](https://github.com/saifulislamamiyo/guardrail-trader
 | `list_universe` | read | — |
 | `get_price_history` | read | `MAX_HISTORY_CALLS = 15` |
 | `check_orders` | dry-run the gate | `MAX_CHECK_CALLS = 5` |
-| `submit_orders` | final answer (a proposal, not an order) | ends the loop |
+| `submit_orders` | final answer (a proposal, not an order) | ends the loop; bounced **once** if an order breaks a limit |
 
 Claude never talks to the broker. `submit_orders` only hands proposals back to the harness.
+
+## Feedback inside the loop and across runs
+
+- **Same run:** `check_orders` dry-runs proposals through the real gate. If `submit_orders` still
+  contains a blocked order, the harness returns the gate's reasons as a tool error and lets Claude
+  revise **once** (`MAX_SUBMIT_REVISIONS = 1`). After that, blocked orders are dropped and the rest
+  go ahead. The bound stops a model from negotiating with the gate indefinitely.
+- **Across runs:** `get_portfolio` includes `recent_activity`, the last 10 real orders and what
+  happened to each (blocked with reasons, filled, partially filled, not filled). Unfilled orders
+  still count toward the monthly limit, so Claude is told not to repeat them blindly.
+  Source: [`journal.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/guardrail_trader/journal.py) → `recent_activity()`.
+
+## Orders and fills
+
+Orders are DAY limit orders. After placing them, the executor waits up to 120 s, cancels anything
+still working, and books only real fills:
+
+- **Fill/cancel race:** an order can fill between the status check and the cancel. `cancel_order()`
+  then returns the final state instead of raising.
+- **Settled fills:** executions and commission reports arrive separately. `fill_details()` waits
+  until the executions add up to the filled quantity and each has its commission.
+- **Still working after cancel:** the known fills are booked and a warning logged. If more fill later,
+  the next run's reconciliation stops trading until a human looks.
 
 ## Harness concerns and where they live
 

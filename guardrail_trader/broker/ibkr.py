@@ -266,14 +266,20 @@ class IBKRBroker:
                 break  # a resting limit order is a valid outcome; don't block on it
         return self._to_result(trade)
 
-    def cancel_order(self, order_id: int, wait_seconds: float = 10.0) -> OrderResult:
-        trade = next((t for t in self.ib.openTrades() if t.order.orderId == order_id), None)
+    def cancel_order(self, order_id: int, wait_seconds: float = 30.0) -> OrderResult:
+        """Cancel an order if it is still working, and wait for a final state.
+
+        Race-safe: an order can fill (or be cancelled) between our last status check and this
+        call. Then there is nothing to cancel, and we return its final state instead of raising.
+        """
+        trade = self._trade(order_id)
         if trade is None:
-            raise ValueError(f"No open order with id {order_id}.")
-        self.ib.cancelOrder(trade.order)
-        deadline = time.monotonic() + wait_seconds
-        while time.monotonic() < deadline and not trade.isDone():
-            self.ib.sleep(0.5)
+            raise ValueError(f"Unknown order id {order_id}.")
+        if not trade.isDone():
+            self.ib.cancelOrder(trade.order)
+            deadline = time.monotonic() + wait_seconds
+            while time.monotonic() < deadline and not trade.isDone():
+                self.ib.sleep(0.5)
         return self._to_result(trade)
 
     def wait_for_orders(self, order_ids: list[int], timeout: float) -> None:
@@ -285,12 +291,22 @@ class IBKRBroker:
                 return
             self.ib.sleep(1.0)
 
-    def fill_details(self, order_id: int) -> tuple[float, float, float, str]:
-        """(filled_qty, avg_price, total_commission, commission_currency) for an order."""
-        trade = next((t for t in self.ib.trades() if t.order.orderId == order_id), None)
-        if trade is None or not trade.fills:
+    def fill_details(self, order_id: int, settle_seconds: float = 15.0) -> tuple[float, float, float, str]:
+        """(filled_qty, avg_price, total_commission, commission_currency) for an order.
+
+        Executions and their commission reports arrive as separate messages, so wait (up to
+        settle_seconds) until the executions add up to the order's filled quantity and every
+        execution has its commission report. Otherwise the ledger could book a fill short or
+        with zero commission.
+        """
+        trade = self._trade(order_id)
+        if trade is None:
             return 0.0, math.nan, 0.0, ""
-        self.ib.sleep(1.0)  # commission reports arrive shortly after executions
+        deadline = time.monotonic() + settle_seconds
+        while time.monotonic() < deadline and not _settled(trade):
+            self.ib.sleep(0.5)
+        if not trade.fills:
+            return 0.0, math.nan, 0.0, ""
         qty = sum(f.execution.shares for f in trade.fills)
         avg = sum(f.execution.shares * f.execution.price for f in trade.fills) / qty
         comm = sum(_num(f.commissionReport.commission) for f in trade.fills
@@ -299,8 +315,13 @@ class IBKRBroker:
         return float(qty), float(avg), float(comm), ccy
 
     def order_result(self, order_id: int) -> OrderResult:
-        trade = next(t for t in self.ib.trades() if t.order.orderId == order_id)
+        trade = self._trade(order_id)
+        if trade is None:
+            raise ValueError(f"Unknown order id {order_id}.")
         return self._to_result(trade)
+
+    def _trade(self, order_id: int):
+        return next((t for t in self.ib.trades() if t.order.orderId == order_id), None)
 
     # -- helpers ------------------------------------------------------------
     @staticmethod
@@ -319,3 +340,11 @@ class IBKRBroker:
             avg_fill_price=_num(s.avgFillPrice),
             message=msgs[-1] if msgs else "",
         )
+
+
+def _settled(trade) -> bool:
+    """Executions add up to the reported filled quantity and each has its commission report."""
+    shares = sum(f.execution.shares for f in trade.fills)
+    reported = _num(trade.orderStatus.filled)
+    has_comm = all(getattr(f.commissionReport, "execId", "") for f in trade.fills)
+    return has_comm and (math.isnan(reported) or abs(shares - reported) < 1e-9)

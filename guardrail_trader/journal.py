@@ -181,6 +181,33 @@ class Journal:
                 (proposal_id, _now(), r.order_id, r.symbol, r.action, r.quantity, r.limit_price,
                  r.status, r.filled, r.avg_fill_price, r.message)).lastrowid
 
+    def recent_activity(self, limit: int = 10) -> list[dict]:
+        """The bot's last proposals (real runs only) and what happened to each, newest first.
+
+        Given to Claude so it doesn't blindly re-propose an order that was blocked or didn't fill;
+        every submitted order counts toward the monthly limit, filled or not.
+        """
+        rows = self.db.execute("""
+            SELECT p.ts, p.action, p.quantity, p.symbol, p.currency, p.limit_price, p.approved,
+                   p.block_reasons, o.status, o.filled
+            FROM proposals p JOIN runs r ON r.id = p.run_id LEFT JOIN orders o ON o.proposal_id = p.id
+            WHERE r.mode NOT LIKE '%dry%' AND r.mode NOT LIKE '%fake%'
+            ORDER BY p.id DESC LIMIT ?""", (limit,)).fetchall()
+        out = []
+        for ts, action, qty, sym, ccy, px, approved, reasons, status, filled in rows:
+            if not approved:
+                outcome = "blocked by gate: " + "; ".join(json.loads(reasons or "[]"))
+            elif status is None:
+                outcome = "approved, but no order was placed"
+            elif status == "Filled":
+                outcome = "filled"
+            elif filled and filled > 0:
+                outcome = f"partially filled {filled:g}/{qty:g}, rest cancelled"
+            else:
+                outcome = f"not filled ({status}); counted toward the monthly limit"
+            out.append({"date": ts[:10], "order": f"{action} {qty:g} {sym}:{ccy} @ {px}", "outcome": outcome})
+        return out
+
     def orders_this_month(self, now: datetime | None = None) -> int:
         """Counts orders SUBMITTED this calendar month (Sydney) - filled or not."""
         now = now or datetime.now(TZ)
