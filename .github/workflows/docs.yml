@@ -25,7 +25,7 @@ jobs:
           python-version: "3.13"
       - run: pip install "mkdocs<2" mkdocs-material   # MkDocs 2.0 breaks Material
       - run: mkdocs build --strict
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
   deploy:
