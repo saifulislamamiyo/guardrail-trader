@@ -75,6 +75,8 @@ CLAUDE_MODEL=                     # blank = default Sonnet; Haiku is cheaper
 LLM_RUN_BUDGET_USD=0.10           # stop the loop (no trades) if one run costs more
 LLM_MONTHLY_BUDGET_USD=2.50       # skip Claude for the rest of the month once spent
 ENABLE_WEB_SEARCH=0               # 1 = allow news search (extra cost per search)
+LLM_REQUEST_TIMEOUT_S=60          # per API call (SDK default is 10 min)
+AGENT_MAX_SECONDS=300             # whole agent loop; over it = no trades
 ```
 
 Cost is computed from actual token usage and a price table in

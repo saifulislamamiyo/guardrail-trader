@@ -49,10 +49,16 @@ def make_client():
         key = os.getenv("OPENROUTER_API_KEY", "").strip()
         if not key:
             raise ValueError("OPENROUTER_API_KEY is empty")
-        return anthropic.Anthropic(base_url="https://openrouter.ai/api", auth_token=key, api_key=None)
+        return anthropic.Anthropic(base_url="https://openrouter.ai/api", auth_token=key, api_key=None,
+                                   timeout=request_timeout_s(), max_retries=2)
     if not os.getenv("ANTHROPIC_API_KEY", "").strip():
         raise ValueError("ANTHROPIC_API_KEY is empty")
-    return anthropic.Anthropic()
+    return anthropic.Anthropic(timeout=request_timeout_s(), max_retries=2)
+
+
+def request_timeout_s() -> float:
+    """Per-request timeout. The SDK default is 10 minutes, long enough to eat a trading slot."""
+    return float(os.getenv("LLM_REQUEST_TIMEOUT_S", "60"))
 
 
 def cost_usd(model_id: str, usage) -> float:

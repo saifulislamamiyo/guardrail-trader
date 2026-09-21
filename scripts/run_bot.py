@@ -157,7 +157,8 @@ def main() -> int:
                 client, prov, model_id, cost_fn = llm.make_client(), llm.provider(), llm.model(), llm.cost_usd
                 log(f"LLM {prov}/{model_id}; spent this month US${spent:.2f} of US${cap:.2f}")
             agent = TradingAgent(
-                client, cfg, state, market, picks,
+                client, cfg, state, market, picks, recent_activity=j.recent_activity(10),
+                request_timeout_s=llm.request_timeout_s(),
                 web_search=os.getenv("ENABLE_WEB_SEARCH", "0") == "1", log=log,
                 model=model_id,
                 **({} if cost_fn is None else dict(

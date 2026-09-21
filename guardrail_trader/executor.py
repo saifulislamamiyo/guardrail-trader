@@ -10,6 +10,9 @@ from guardrail_trader.journal import Journal
 from guardrail_trader.risk import Decision
 
 
+DONE = ("Filled", "Cancelled", "ApiCancelled", "Inactive")
+
+
 @dataclass
 class ExecutionReport:
     symbol: str
@@ -43,9 +46,11 @@ def execute(decisions: list[tuple[int, Decision]], broker: IBKRBroker, journal: 
 
     reports = []
     for pid, d, oid in placed:
-        status = broker.order_result(oid).status
-        if status not in ("Filled", "Cancelled", "ApiCancelled", "Inactive"):
-            status = broker.cancel_order(oid).status
+        # No-op for orders already done; safe if an order filled a moment ago (race).
+        status = broker.cancel_order(oid).status
+        if status not in DONE:
+            log(f"[exec] WARNING order {oid} still {status} after cancel; booking the fills known now. "
+                f"If more fills arrive later, the next run's reconciliation stops and flags it.")
         qty, avg, comm, comm_ccy = broker.fill_details(oid)
         p = d.proposal
         if qty > 0:

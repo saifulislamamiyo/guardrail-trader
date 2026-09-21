@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
@@ -18,6 +19,8 @@ from guardrail_trader.risk import (
 MAX_TURNS = int(os.getenv("AGENT_MAX_TURNS", "20"))
 MAX_HISTORY_CALLS = 15   # IBKR historical-data pacing + cost control
 MAX_CHECK_CALLS = 5
+MAX_SUBMIT_REVISIONS = 1   # a submit with blocked orders is bounced back once, with the gate's reasons
+MAX_SECONDS = float(os.getenv("AGENT_MAX_SECONDS", "300"))   # wall-clock budget for the whole loop
 
 SYSTEM_PROMPT = """You are the portfolio manager for a small, fully automated stock portfolio.
 
@@ -38,12 +41,16 @@ Things to weigh:
 - Prices you see may be delayed ~15 minutes.
 - Diversify: a concentrated portfolio can hit the kill switch.
 - Holdings the owner specifically picked are marked my_pick=true; treat them as candidates, not obligations.
+- get_portfolio includes recent_activity: your last orders and what happened (blocked, filled, not filled).
+  Don't repeat an order that was just blocked or didn't fill without a reason; unfilled orders still used up the monthly limit.
 
 Process:
 1. Call get_portfolio.
 2. Explore candidates with list_universe and get_price_history (max {hist} history calls per run).
 3. Optionally call check_orders to dry-run proposals through the risk gate (max {checks} calls).
-4. Finish by calling submit_orders exactly once, with an empty list if you decide to hold.
+4. Finish by calling submit_orders, with an empty list if you decide to hold. If any order breaks a
+   limit, submit_orders returns the gate's reasons once so you can fix or drop it; after that,
+   blocked orders are simply dropped.
 Every order needs a concise, specific reason; it is logged for the owner to audit."""
 
 TOOLS = [
@@ -115,7 +122,9 @@ class TradingAgent:
                  my_picks: set[str] | None = None, web_search: bool = False,
                  log: Callable[[str], None] = print, model: str = "claude-sonnet-5",
                  cost_fn: Callable = _free, run_budget_usd: float = 0.50,
-                 on_usage: Callable | None = None):
+                 on_usage: Callable | None = None, recent_activity: list[dict] | None = None,
+                 max_seconds: float = MAX_SECONDS, request_timeout_s: float = 60.0,
+                 clock: Callable[[], float] = time.monotonic):
         self.client, self.cfg, self.state, self.market = client, cfg, state, market
         self.model, self.cost_fn, self.run_budget_usd, self.on_usage = model, cost_fn, run_budget_usd, on_usage
         self.picks = my_picks or set()
@@ -123,6 +132,9 @@ class TradingAgent:
         self.log = log
         self.history_calls = 0
         self.check_calls = 0
+        self.submit_revisions = 0
+        self.recent = recent_activity or []
+        self.max_seconds, self.request_timeout_s, self.clock = max_seconds, request_timeout_s, clock
         self.max_pos_base = state.value_base * cfg.max_position_pct / 100
 
     # ---------------------------------------------------------------- loop
@@ -140,12 +152,19 @@ class TradingAgent:
         system_blocks = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
         messages: list = [{"role": "user", "content": [{"type": "text", "text": task}]}]
         res = AgentResult([], "", False, 0, transcript=messages)
+        deadline = self.clock() + self.max_seconds
 
         for turn in range(1, MAX_TURNS + 1):
             res.turns = turn
+            remaining = deadline - self.clock()
+            if remaining <= 0:
+                self.log(f"[harness] loop exceeded {self.max_seconds:.0f}s -> stop, no trades")
+                res.stop_reason = "time_budget_exceeded"
+                return res
             _move_cache_breakpoint(messages)
             resp = self.client.messages.create(model=self.model, max_tokens=4096, system=system_blocks,
-                                               tools=tools, messages=messages)
+                                               tools=tools, messages=messages,
+                                               timeout=max(5.0, min(self.request_timeout_s, remaining)))
             res.input_tokens += int(getattr(resp.usage, "input_tokens", 0) or 0)
             res.output_tokens += int(getattr(resp.usage, "output_tokens", 0) or 0)
             cost = self.cost_fn(self.model, resp.usage)
@@ -210,6 +229,7 @@ class TradingAgent:
                           "value": round(h.quantity * h.price_base, 2),
                           "weight_pct": round(h.quantity * h.price_base / v * 100, 2) if v else 0}
                          for k, h in s.holdings.items()],
+            "recent_activity": self.recent,
         })
 
     def _universe(self, a) -> str:
@@ -246,6 +266,13 @@ class TradingAgent:
     def _submit(self, a) -> str:
         proposals = self._to_proposals(a["orders"])
         decisions = self.evaluate(proposals)
+        if any(not d.approved for d in decisions) and self.submit_revisions < MAX_SUBMIT_REVISIONS:
+            self.submit_revisions += 1
+            raise _ToolError(json.dumps({
+                "rejected": "Some orders break a limit. Nothing was submitted. Fix or drop the blocked "
+                            "orders and call submit_orders again. This is your only revision: next time, "
+                            "blocked orders are dropped and the rest go ahead.",
+                "gate": [_verdict(d) for d in decisions]}))
         return json.dumps({"received": len(proposals), "gate_preview": [_verdict(d) for d in decisions],
                            "note": "Final gate check and execution happen in code after this."})
 
