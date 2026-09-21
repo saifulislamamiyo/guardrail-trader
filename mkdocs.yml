@@ -1,0 +1,68 @@
+site_name: guardrail-trader
+site_description: An autonomous IBKR trading agent where Claude proposes and code decides.
+site_url: https://saifulislamamiyo.github.io/guardrail-trader/
+repo_url: https://github.com/saifulislamamiyo/guardrail-trader
+repo_name: saifulislamamiyo/guardrail-trader
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - content.tabs.link
+    - search.highlight
+  palette:
+    # Auto: follow the OS setting
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Overview: index.md
+  - Architecture: architecture.md
+  - Setup:
+      - Native (launchd): setup-native.md
+      - Docker: setup-docker.md
+  - Harness and agent loop: harness-and-loop.md
+  - How to use: configuration.md
+  - Dashboard: dashboard.md
+  - Operations: operations.md
+  - Roadmap: roadmap.md

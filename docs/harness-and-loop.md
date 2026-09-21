@@ -1,0 +1,88 @@
+# Harness and agent loop
+
+## Two ideas
+
+- **Agent loop:** call the model → if it asks for a tool, run the tool → send the result back →
+  repeat until it stops asking or a limit is hit. The API is stateless, so the growing message
+  list *is* the agent's memory.
+- **Harness:** everything around that loop: which tools exist, what they're allowed to do, when the
+  loop must stop, what it may spend, and what gets recorded. In this project the harness, not the
+  prompt, is what makes an LLM safe to let near a brokerage account.
+
+## The loop in this project
+
+```mermaid
+sequenceDiagram
+    participant H as Harness (agent.py)
+    participant C as Claude
+    participant T as Tools
+    participant G as Risk gate
+    H->>C: system prompt (limits) + task
+    loop until submit_orders, stop, or a limit is hit
+        C->>H: tool_use (get_portfolio / list_universe / get_price_history / check_orders)
+        H->>T: run tool (read-only)
+        T-->>H: result
+        H-->>C: tool_result
+    end
+    C->>H: submit_orders(orders, summary)
+    H->>G: final authoritative check (run_bot.py)
+    G-->>H: approved / blocked + reasons
+```
+
+Implemented in [`agent.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/guardrail_trader/agent.py) → `TradingAgent.run()`. The loop stops when:
+
+- Claude calls `submit_orders` (an empty list means "hold"),
+- Claude ends its turn without submitting, which means **no trades**,
+- `MAX_TURNS` (20) is reached, or
+- the per-run cost budget is exceeded.
+
+## Tools Claude gets
+
+| Tool | Kind | Limit per run |
+|---|---|---|
+| `get_portfolio` | read | — |
+| `list_universe` | read | — |
+| `get_price_history` | read | `MAX_HISTORY_CALLS = 15` |
+| `check_orders` | dry-run the gate | `MAX_CHECK_CALLS = 5` |
+| `submit_orders` | final answer (a proposal, not an order) | ends the loop |
+
+Claude never talks to the broker. `submit_orders` only hands proposals back to the harness.
+
+## Harness concerns and where they live
+
+| Concern | What the harness does | Where |
+|---|---|---|
+| Permissions | The gate decides; the executor only places gate-approved orders. | [`run_bot.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/scripts/run_bot.py) step 5 · [`executor.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/guardrail_trader/executor.py) |
+| Paper vs live safety | Refuses live ports in paper mode; account ID must match the mode. | [`broker/ibkr.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/guardrail_trader/broker/ibkr.py) → `check_endpoint()`, `check_account()` |
+| Reconciliation | Journal holdings must equal IBKR positions before any run. | `run_bot.py` step 1 |
+| Virtual budget | The bot only sees its own ledger's cash, not the whole paper account. | [`journal.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/guardrail_trader/journal.py) → `cash_base()` |
+| Stop conditions | Max turns, per-run cost, per-tool call limits. | `agent.py` |
+| Spend control | Cost from real token usage; monthly cap checked before calling Claude. | [`llm.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/guardrail_trader/llm.py) → `cost_usd()` |
+| Context management | Prompt caching; price history summarised before it reaches Claude. | `agent.py` → `_move_cache_breakpoint()` · [`market.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/guardrail_trader/market.py) → `summarize_history()` |
+| Tool errors | Returned to Claude as `is_error` results instead of crashing. | `agent.py` → `_dispatch()` |
+| Observability | Proposals, reasons, verdicts, orders, fills, cost and full transcripts recorded. | journal · `data/runs/run_<id>.json` · [Dashboard](dashboard.md) |
+
+## The risk gate
+
+Every proposal passes the gate **twice**: when Claude calls `check_orders`/`submit_orders` (so it
+can see why something was blocked), and again, authoritatively, in `run_bot.py` before anything is
+sent. Orders are evaluated in sequence on a *simulated* portfolio, sells first, so a batch can't
+break a limit that each order passes alone.
+
+| Rule | Default | Configurable in |
+|---|---|---|
+| Only allowlisted instruments | universe CSVs | `[universe] files` |
+| Max single holding | 25% of portfolio | `max_position_pct` |
+| Max orders per calendar month | 10 | `max_trades_per_month` |
+| Kill switch: drawdown from peak | 25% → sell all, halt until manual reset | `max_drawdown_pct` |
+| Limit price within ± of reference | 2% | `max_price_deviation_pct` |
+| Commission ≤ share of order value | 10% | `max_commission_pct` |
+| Whole shares only | on | `allow_fractional` |
+| No shorting, no margin | always | hard-coded |
+| Invalid config refuses to load | always | hard-coded |
+
+Code: [`risk/gate.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/guardrail_trader/risk/gate.py) → `evaluate()`, `_check()`, `kill_switch_triggered()`. Tests: [`tests/test_risk_gate.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/tests/test_risk_gate.py).
+
+!!! tip "Try it without spending"
+    `run_bot.py --dry-run --fake-claude` drives the whole harness with a scripted stand-in for
+    Claude ([`fake_llm.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/guardrail_trader/fake_llm.py)): no API cost, no orders.
