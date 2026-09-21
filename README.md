@@ -72,7 +72,7 @@ All tunable values live in [`config/risk.toml`](config/risk.toml). Every rule ha
 | **Fill accounting** | Only real fills are booked (partial fills handled; unfilled orders cancelled). | `executor.py` → `execute()` · `broker/ibkr.py` → `fill_details()` |
 | **Market-hours check** | Uses IBKR's own trading hours (holidays included); won't trade with less than 15 minutes to the close. | `market.py` → `market_sessions()`, `is_open()` |
 | **Tool-error handling** | Tool errors go back to Claude as `is_error` results instead of crashing the loop. | `agent.py` → `_dispatch()` |
-| **Observability** | Every proposal, Claude's reason, the gate verdict, orders, fills and LLM cost are recorded. Full transcripts are saved per run. | `journal.py` · `data/runs/run_<id>.json` · dashboard |
+| **Observability** | Every proposal, Claude's reason, the gate verdict, orders, fills and LLM cost are recorded. Full transcripts are saved per run. | `journal.py` · `data/runs/run_<id>.json` · [Dashboard](#dashboard) |
 | **Scheduling** | Runs at New York-time slots (handles both US and Sydney daylight saving), at most 3 attempts per slot, file lock against overlapping runs. | `scripts/scheduled_run.py` → `SLOTS`, `MAX_ATTEMPTS`, `current_slot()` |
 
 ---
@@ -155,9 +155,48 @@ scripts/launchd.sh uninstall
 ### See what it did
 
 ```bash
-.venv/bin/python scripts/dashboard.py        # http://127.0.0.1:8765 (read-only)
-.venv/bin/python scripts/journal_cli.py status
+.venv/bin/python scripts/dashboard.py        # http://127.0.0.1:8765 — see "Dashboard" below
+.venv/bin/python scripts/journal_cli.py status   # same data in the terminal
 ```
+
+---
+
+## Dashboard
+
+A local web page that shows everything the bot has done. It is **read-only**: it reads the
+journal and scheduler files, and never connects to IBKR or places orders. It listens on
+`127.0.0.1` only.
+
+```bash
+.venv/bin/python scripts/dashboard.py              # opens http://127.0.0.1:8765
+.venv/bin/python scripts/dashboard.py --port 9000 --no-browser
+```
+
+When the LaunchAgents are installed (`scripts/launchd.sh install`), the dashboard runs all the
+time as `com.guardrail-trader.dashboard` and restarts if it crashes. The page refreshes every
+60 seconds and has a light/dark toggle.
+
+| Section | What it shows |
+|---|---|
+| **Summary tiles** | Portfolio value, profit/loss vs starting capital, cash, drawdown (meter towards the kill switch), orders this month vs limit, LLM spend vs monthly cap, last run, **scheduler health** (running or silent, plus the next slot in Sydney time) |
+| **Kill-switch banner** | Red banner, with the reset command, when trading is halted |
+| **Portfolio value chart** | Value at the end of each run against a dashed starting-capital line; hover for run details |
+| **Holdings** | Quantity, average cost (incl. commission), latest price, value, profit/loss, weight |
+| **Decisions** | Every order Claude proposed: the gate verdict and block reasons, what IBKR did with it (filled / partial / not filled / dry run), and Claude's reason. Filters: all · approved · blocked · hide dry/fake runs |
+| **Runs** | Mode, status, value, approved/blocked counts, LLM cost. **Click a run to open Claude's step-by-step transcript**: every tool call and result |
+| **Fills** | What actually executed at IBKR and was booked in the ledger |
+| **LLM spend** | Cost, runs and tokens per month |
+
+**Where it's implemented**
+
+| Piece | File |
+|---|---|
+| HTTP server (Python standard library only; `/`, `/api/data`, `/api/transcript/<run_id>`) | `scripts/dashboard.py` |
+| Data layer: journal queries, average cost, scheduler status, transcript simplifier | `guardrail_trader/dashboard_data.py` → `build()`, `transcript()`, `_scheduler_status()` |
+| Page (HTML/CSS/JS, inline SVG chart, no external dependencies) | `guardrail_trader/web/dashboard.html` |
+| Holdings prices per run (so the dashboard needs no broker) | `journal.py` → `finish_run()` writes the `snapshots` table |
+| Scheduler heartbeat and slot history | `data/scheduler_heartbeat.json`, `data/scheduler_state.json` (written by `scripts/scheduled_run.py`) |
+| Tests | `tests/test_dashboard.py` |
 
 ---
 
