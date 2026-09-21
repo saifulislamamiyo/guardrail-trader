@@ -1,0 +1,45 @@
+# guardrail-trader in Docker (branch: docker). Step 1: IB Gateway only.
+#
+#   docker compose --env-file docker/gateway.env up -d ib-gateway
+#   docker compose logs -f ib-gateway
+#   docker compose down
+#
+# Host ports are deliberately NOT 4002/5900 so this can run beside the native IB Gateway.
+name: guardrail-docker
+
+services:
+  ib-gateway:
+    image: ghcr.io/gnzsnz/ib-gateway:10.45.1h      # "stable" channel, same version as the native app
+    restart: unless-stopped
+    environment:
+      TRADING_MODE: paper
+      TWS_USERID: ${TWS_USERID:?set TWS_USERID in docker/gateway.env}
+      TWS_PASSWORD_FILE: /run/secrets/tws_password
+      VNC_SERVER_PASSWORD_FILE: /run/secrets/vnc_password
+      READ_ONLY_API: "no"                  # our code has its own read-only mode
+      TWS_ACCEPT_INCOMING: accept
+      BYPASS_WARNING: "yes"
+      TIME_ZONE: Australia/Sydney
+      AUTO_RESTART_TIME: "11:59 AM"        # daily restart, Sydney midday = outside US market hours
+      TWOFA_TIMEOUT_ACTION: restart
+      RELOGIN_AFTER_TWOFA_TIMEOUT: "yes"
+      # Never kick an existing session (e.g. the native IB Gateway the current bot uses).
+      EXISTING_SESSION_DETECTED_ACTION: secondary
+      TWS_SETTINGS_PATH: /home/ibgateway/tws_settings
+    volumes:
+      - gateway-settings:/home/ibgateway/tws_settings
+    secrets:
+      - tws_password
+      - vnc_password
+    ports:
+      - "127.0.0.1:14002:4004"             # paper API  (host 14002 → container 4004 → gateway 4002)
+      - "127.0.0.1:15900:5900"             # VNC, to watch/handle the login screen if needed
+
+secrets:
+  tws_password:
+    file: docker/secrets/tws_password.txt
+  vnc_password:
+    file: docker/secrets/vnc_password.txt
+
+volumes:
+  gateway-settings:
