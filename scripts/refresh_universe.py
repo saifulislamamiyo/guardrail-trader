@@ -1,5 +1,5 @@
 """Rebuild config/universe/top_sp500.csv: the largest S&P 500 companies by market cap,
-topping up Saif's picks to a fixed universe size (default 50).
+topping up the owner's picks to a fixed universe size (default 50).
 
 Market cap ranking comes from SPY's published daily holdings weights (State Street),
 which are float-adjusted market-cap weights. One share class per company (GOOGL beats GOOG).
@@ -22,7 +22,7 @@ from guardrail_trader.config import PROJECT_ROOT
 
 SPY_URL = ("https://www.ssga.com/us/en/intermediary/library-content/products/fund-data/"
            "etfs/us/holdings-daily-us-en-spy.xlsx")
-PICKS = PROJECT_ROOT / "config" / "universe" / "saif_picks.csv"
+PICKS = PROJECT_ROOT / "config" / "universe" / "my_picks.csv"
 OUT = PROJECT_ROOT / "config" / "universe" / "top_sp500.csv"
 SAME_COMPANY = {"GOOG": "GOOGL", "GOOGL": "GOOG", "FOX": "FOXA", "FOXA": "FOX", "NWS": "NWSA", "NWSA": "NWS"}
 

@@ -143,7 +143,7 @@ def main() -> int:
 
             # 4. Claude
             market = IBKRMarketView(broker, cfg, prices, fx)
-            picks = {r["symbol"] for r in csv.DictReader(open(PROJECT_ROOT / "config/universe/saif_picks.csv"))}
+            picks = {r["symbol"] for r in csv.DictReader(open(PROJECT_ROOT / "config/universe/my_picks.csv"))}
             if args.fake_claude:
                 from guardrail_trader.fake_llm import FakeClaude
                 client, prov, model_id, cost_fn = FakeClaude(price_fn=lambda s: prices[f"{s}:USD"]), "fake", "fake", None

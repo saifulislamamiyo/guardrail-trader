@@ -37,7 +37,7 @@ class FakeClaude:
                  "reason": "fake-claude: harness test order"}
         script = [
             [_block_text("Checking the portfolio."), _block_tool("get_portfolio", {})],
-            [_block_tool("list_universe", {"saif_picks_only": True})],
+            [_block_tool("list_universe", {"my_picks_only": True})],
             [_block_tool("get_price_history", {"symbol": self.symbol})],
             [_block_tool("check_orders", {"orders": [order]})],
             [_block_tool("submit_orders", {"orders": [order], "summary": "Fake run to exercise the harness."})],

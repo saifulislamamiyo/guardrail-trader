@@ -26,7 +26,7 @@ OUT = PROJECT_ROOT / "data" / "affordability.csv"
 def main() -> int:
     cfg = load_risk_config()
     cap_base = cfg.capital * cfg.max_position_pct / 100
-    picks = {r["symbol"] for r in csv.DictReader(open(PROJECT_ROOT / "config/universe/saif_picks.csv"))}
+    picks = {r["symbol"] for r in csv.DictReader(open(PROJECT_ROOT / "config/universe/my_picks.csv"))}
     insts = sorted(cfg.universe.values(), key=lambda i: i.symbol)
     rows = []
 

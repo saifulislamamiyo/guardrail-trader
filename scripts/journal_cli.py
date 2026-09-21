@@ -1,4 +1,4 @@
-"""Operator CLI for the journal (Saif only - the bot never calls these).
+"""Operator CLI for the journal (operator only - the bot never calls these).
 
   .venv/bin/python scripts/journal_cli.py init                 # deposit budget from config/risk.toml (once)
   .venv/bin/python scripts/journal_cli.py status               # cash, holdings, halt state, recent activity

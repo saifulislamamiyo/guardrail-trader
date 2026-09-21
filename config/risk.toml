@@ -1,4 +1,4 @@
-# Saif's risk limits. Code enforces these; Claude can read them but never change them.
+# Risk limits. Code enforces these; Claude can read them but never change them.
 
 [budget]
 capital = 5000.0       # virtual budget the bot may use (paper phase; the paper account itself holds much more)
@@ -17,7 +17,7 @@ allow_fractional = false        # IBKR rejects fractional orders via API (error 
 # US stocks/ETFs: exchange SMART, currency USD.  ASX: exchange ASX, currency AUD.
 [universe]
 files = [
-  "config/universe/saif_picks.csv",  # Saif's 17 picks
+  "config/universe/my_picks.csv",  # owner's own picks
   "config/universe/top_sp500.csv",   # + 33 largest S&P 500 by market cap = 50. Refresh monthly: scripts/refresh_universe.py
 ]
 # config/universe/qus_sp500.csv (full QUS / S&P 500 list) is kept for reference but not traded.

@@ -97,7 +97,7 @@ class Journal:
         self._set("halted_reason", f"{_now()} {reason}")
 
     def reset_halt(self, peak_value_base: float) -> None:
-        """Manual re-arm by Saif. Peak resets to current value so drawdown starts at 0."""
+        """Manual re-arm by the operator. Peak resets to current value so drawdown starts at 0."""
         self._set("halted", "0")
         self._set("halted_reason", "")
         self._set("peak_base", repr(peak_value_base))

@@ -6,7 +6,7 @@ Hard rules (not configurable):
   * BUY / SELL only, limit orders only (no market orders on delayed data)
   * no shorting  - can only sell what the virtual ledger holds
   * no margin    - buys must be paid from virtual cash, incl. commission
-  * halted       - after a kill switch, nothing trades until Saif resets it
+  * halted       - after a kill switch, nothing trades until the operator resets it
 Configurable rules come from config/risk.toml.
 """
 from __future__ import annotations

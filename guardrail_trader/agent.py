@@ -37,7 +37,7 @@ Things to weigh:
 - Each US order costs roughly US$1 commission; frequent trading erodes returns. Prefer fewer, deliberate trades.
 - Prices you see may be delayed ~15 minutes.
 - Diversify: a concentrated portfolio can hit the kill switch.
-- Holdings the owner specifically picked are marked saif_pick=true; treat them as candidates, not obligations.
+- Holdings the owner specifically picked are marked my_pick=true; treat them as candidates, not obligations.
 
 Process:
 1. Call get_portfolio.
@@ -54,7 +54,7 @@ TOOLS = [
      "description": "Allowlisted instruments with latest price. Filter to keep output small.",
      "input_schema": {"type": "object", "properties": {
          "only_affordable": {"type": "boolean", "description": "Only instruments where 1 share fits the max position size. Default true."},
-         "saif_picks_only": {"type": "boolean", "description": "Only the owner's picks."},
+         "my_picks_only": {"type": "boolean", "description": "Only the owner's picks."},
          "symbols": {"type": "array", "items": {"type": "string"}, "description": "Only these tickers."},
          "limit": {"type": "integer", "description": "Max rows (default 600)."}}}},
     {"name": "get_price_history",
@@ -112,13 +112,13 @@ def _free(_model, _usage) -> float:
 
 class TradingAgent:
     def __init__(self, client, cfg: RiskConfig, state: PortfolioState, market: MarketView,
-                 saif_picks: set[str] | None = None, web_search: bool = False,
+                 my_picks: set[str] | None = None, web_search: bool = False,
                  log: Callable[[str], None] = print, model: str = "claude-sonnet-5",
                  cost_fn: Callable = _free, run_budget_usd: float = 0.50,
                  on_usage: Callable | None = None):
         self.client, self.cfg, self.state, self.market = client, cfg, state, market
         self.model, self.cost_fn, self.run_budget_usd, self.on_usage = model, cost_fn, run_budget_usd, on_usage
-        self.picks = saif_picks or set()
+        self.picks = my_picks or set()
         self.web_search = web_search
         self.log = log
         self.history_calls = 0
@@ -215,12 +215,12 @@ class TradingAgent:
     def _universe(self, a) -> str:
         only_aff = a.get("only_affordable", True)
         syms = {s.upper() for s in a.get("symbols") or []}
-        rows = ["symbol,currency,price,price_base,saif_pick"]
+        rows = ["symbol,currency,price,price_base,my_pick"]
         for key, inst in sorted(self.cfg.universe.items()):
             px = self.market.prices.get(key)
             if px is None or (syms and inst.symbol not in syms):
                 continue
-            if a.get("saif_picks_only") and inst.symbol not in self.picks:
+            if a.get("my_picks_only") and inst.symbol not in self.picks:
                 continue
             pb = px * self.market.fx[inst.currency]
             if only_aff and pb > self.max_pos_base:

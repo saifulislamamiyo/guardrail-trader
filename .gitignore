@@ -26,3 +26,6 @@ docker/secrets/
 docker/*.env
 !docker/*.env.example
 site/
+
+# personal agent notes (not published)
+CLAUDE.local.md

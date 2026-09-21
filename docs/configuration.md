@@ -43,7 +43,7 @@ files means nothing can be bought.
 ```toml
 [universe]
 files = [
-  "config/universe/saif_picks.csv",
+  "config/universe/my_picks.csv",
   "config/universe/top_sp500.csv",
 ]
 ```
