@@ -5,13 +5,13 @@ from guardrail_trader.broker import BrokerSafetyError, IBKRBroker, check_account
 from guardrail_trader.config import IBKRConfig
 
 
-@pytest.mark.parametrize("port", [4001, 7496])
+@pytest.mark.parametrize("port", [4001, 7496, 4003])
 def test_paper_mode_refuses_live_ports(port):
     with pytest.raises(BrokerSafetyError):
         check_endpoint("paper", port)
 
 
-@pytest.mark.parametrize("port", [4002, 7497])
+@pytest.mark.parametrize("port", [4002, 7497, 4004])
 def test_live_mode_refuses_paper_ports(port):
     with pytest.raises(BrokerSafetyError):
         check_endpoint("live", port)

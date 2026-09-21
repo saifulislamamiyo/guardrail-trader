@@ -1,21 +1,30 @@
-# guardrail-trader in Docker (branch: docker). Step 1: IB Gateway only.
+# guardrail-trader in Docker (branch: docker)
 #
-#   docker compose --env-file docker/gateway.env up -d ib-gateway
-#   docker compose logs -f ib-gateway
+#   docker compose build
+#   docker compose up -d            # ib-gateway + bot (scheduler) + dashboard
+#   docker compose logs -f bot
 #   docker compose down
 #
-# No settings volume: IBC re-applies config from env on every start (a fresh named
-# volume is root-owned and IB Gateway runs as uid 1000 -> 'jts.ini: Permission denied').
-# Host ports are deliberately NOT 4002/5900 so this can run beside the native IB Gateway.
+# Files you provide (all gitignored):
+#   .env                              bot settings + ANTHROPIC_API_KEY (same format as .env.example)
+#   docker/gateway.env                TWS_USERID=<paper/trial username>
+#   docker/secrets/tws_password.txt   IBKR password
+#   docker/secrets/vnc_password.txt   VNC password (for watching the gateway login screen)
+#
+# Host ports avoid the native setup (IB Gateway 4002, dashboard 8765) so both can coexist.
+# IBKR allows ONE session per username: only one of native IB Gateway / ib-gateway container
+# can be logged in at a time.
 name: guardrail-docker
 
 services:
   ib-gateway:
+    # No settings volume: IBC re-applies config from env on every start (a fresh named
+    # volume is root-owned and IB Gateway runs as uid 1000 -> 'jts.ini: Permission denied').
     image: ghcr.io/gnzsnz/ib-gateway:10.45.1h      # "stable" channel, same version as the native app
     restart: unless-stopped
+    env_file: docker/gateway.env                   # TWS_USERID
     environment:
       TRADING_MODE: paper
-      TWS_USERID: ${TWS_USERID:?set TWS_USERID in docker/gateway.env}
       TWS_PASSWORD_FILE: /run/secrets/tws_password
       VNC_SERVER_PASSWORD_FILE: /run/secrets/vnc_password
       READ_ONLY_API: "no"                  # our code has its own read-only mode
@@ -25,18 +34,56 @@ services:
       AUTO_RESTART_TIME: "11:59 AM"        # daily restart, Sydney midday = outside US market hours
       TWOFA_TIMEOUT_ACTION: restart
       RELOGIN_AFTER_TWOFA_TIMEOUT: "yes"
-      # Never kick an existing session (e.g. the native IB Gateway the current bot uses).
+      # Never kick an existing session (e.g. a native IB Gateway still logged in).
       EXISTING_SESSION_DETECTED_ACTION: secondary
     secrets:
       - tws_password
       - vnc_password
     ports:
-      - "127.0.0.1:14002:4004"             # paper API  (host 14002 → container 4004 → gateway 4002)
-      - "127.0.0.1:15900:5900"             # VNC, to watch/handle the login screen if needed
+      # socat inside the image forwards 0.0.0.0:4004 -> 127.0.0.1:4002, so IB Gateway still
+      # only ever sees localhost connections. 4004 is reachable from this compose network;
+      # the host mapping below is 127.0.0.1-only, for diagnostics.
+      - "127.0.0.1:14002:4004"
+      - "127.0.0.1:15900:5900"
+
+  bot:
+    build: .
+    image: guardrail-trader:local
+    restart: unless-stopped
+    command: ["supercronic", "/app/docker/crontab"]    # every 15 min -> scripts/scheduled_run.py
+    env_file: .env                                      # API key, LLM caps, TRADING_MODE, ...
+    environment:
+      IBKR_HOST: ib-gateway                             # overrides .env (which says 127.0.0.1)
+      IBKR_PORT: "4004"
+    volumes:
+      - ./data:/app/data            # journal.sqlite, runs/, scheduler state/heartbeat
+      - ./logs:/app/logs            # per-run logs
+      - ./config:/app/config:ro     # risk.toml + universe (edit on host, no rebuild)
+    depends_on:
+      - ib-gateway
+    healthcheck:                    # scheduler heartbeat must be < 20 min old
+      test: ["CMD", "python", "-c", "import json,sys,datetime as d; t=d.datetime.fromisoformat(json.load(open('/app/data/scheduler_heartbeat.json'))['last_tick_ny']); sys.exit(0 if (d.datetime.now(d.timezone.utc)-t).total_seconds()<1200 else 1)"]
+      interval: 5m
+      timeout: 10s
+      start_period: 20m
+      retries: 1
+
+  dashboard:
+    image: guardrail-trader:local
+    restart: unless-stopped
+    command: ["python", "scripts/dashboard.py", "--host", "0.0.0.0", "--no-browser"]
+    environment:                    # least privilege: no API key in this container
+      LLM_MONTHLY_BUDGET_USD: ${LLM_MONTHLY_BUDGET_USD:-2.00}
+    volumes:
+      - ./data:/app/data            # read by the dashboard (SQLite needs rw for its lock files)
+      - ./config:/app/config:ro
+    ports:
+      - "127.0.0.1:18765:8765"      # private to this Mac
+    depends_on:
+      - bot
 
 secrets:
   tws_password:
     file: docker/secrets/tws_password.txt
   vnc_password:
     file: docker/secrets/vnc_password.txt
-

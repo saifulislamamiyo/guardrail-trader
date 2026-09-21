@@ -7,10 +7,12 @@ dependencies = [
     "anthropic",
     "ib_async",
     "python-dotenv",
+    "tzdata",          # zoneinfo data for slim containers (New York / Sydney slot logic)
 ]
 
 [project.optional-dependencies]
 dev = ["pytest"]
+tools = ["pandas", "lxml", "openpyxl", "requests"]   # scripts/refresh_universe.py
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -18,3 +20,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["guardrail_trader*"]
+
+[tool.pytest.ini_options]
+addopts = "-p no:cacheprovider"   # containers run as a non-root user without a writable cache dir
