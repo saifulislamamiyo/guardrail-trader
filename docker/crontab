@@ -1,0 +1,3 @@
+# supercronic crontab (container time is UTC; that's fine — scheduled_run.py decides
+# in America/New_York time whether this tick falls inside a trading slot).
+*/15 * * * * cd /app && python scripts/scheduled_run.py

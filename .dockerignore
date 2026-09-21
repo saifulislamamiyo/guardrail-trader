@@ -1,0 +1,18 @@
+# secrets never enter the build context
+.env
+.env.*
+docker/secrets/
+docker/*.env
+
+# runtime state (mounted at run time instead)
+data/
+logs/
+
+# local tooling
+.git/
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.DS_Store
