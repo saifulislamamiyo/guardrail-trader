@@ -3,6 +3,7 @@
 #   scripts/launchd.sh install | docker-mode | uninstall | status
 #   install      native mode: scheduler + keep-awake + dashboard
 #   docker-mode  Docker runs scheduler + dashboard; only keep-awake stays on the host
+#   keep-awake runs 23:00 local -> 16:00 New York on US trading nights (scripts/keep_awake.py)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -38,10 +39,33 @@ $extra  <key>StandardOutPath</key><string>$ROOT/logs/$label.log</string>
 EOF
 }
 
+awake_plist() {  # keep-awake only for tonight's trading runs (see scripts/keep_awake.py)
+  cat > "$LA/com.guardrail-trader.awake.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.guardrail-trader.awake</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$ROOT/.venv/bin/python</string>
+    <string>$ROOT/scripts/keep_awake.py</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><false/>
+  <key>StandardOutPath</key><string>$ROOT/logs/com.guardrail-trader.awake.log</string>
+  <key>StandardErrorPath</key><string>$ROOT/logs/com.guardrail-trader.awake.log</string>
+</dict>
+</plist>
+EOF
+}
+
 case "${1:-status}" in
   install)
     plist com.guardrail-trader.scheduler false 900 "$PY" "$ROOT/scripts/scheduled_run.py"
-    plist com.guardrail-trader.awake true 0 /usr/bin/caffeinate -i -s
+    awake_plist
     plist com.guardrail-trader.dashboard true 0 "$PY" "$ROOT/scripts/dashboard.py" --no-browser
     for l in $LABELS; do
       launchctl bootout "$DOMAIN/$l" 2>/dev/null || true
@@ -55,7 +79,7 @@ case "${1:-status}" in
     for l in com.guardrail-trader.scheduler com.guardrail-trader.dashboard; do
       launchctl bootout "$DOMAIN/$l" 2>/dev/null || true; rm -f "$LA/$l.plist"
     done
-    plist com.guardrail-trader.awake true 0 /usr/bin/caffeinate -i -s
+    awake_plist
     launchctl bootout "$DOMAIN/com.guardrail-trader.awake" 2>/dev/null || true
     launchctl bootstrap "$DOMAIN" "$LA/com.guardrail-trader.awake.plist"
     echo "docker-mode: only com.guardrail-trader.awake is loaded"
