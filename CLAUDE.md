@@ -11,6 +11,8 @@ Docs: https://saifulislamamiyo.github.io/guardrail-trader/
 - Secrets live in `.env`, `docker/gateway.env` and `docker/secrets/` only (all gitignored); never commit or log them.
 - Every decision, reason and fill is written to the journal (`data/journal.sqlite`).
 - Every gate rule has a unit test; run `.venv/bin/python -m pytest -q` before committing.
+- Git workflow: never push directly to `main` and never force-push. Work on a branch, push it, open a PR with `gh pr create`; the owner reviews and merges. Keep PRs focused, with CI (`tests`) green.
+- After changing dependencies, regenerate the hash-locked `requirements/*.txt` with `uv pip compile ... --generate-hashes` (see docs/operations.md).
 
 ## Map
 - Broker adapter (executes, never decides): `guardrail_trader/broker/ibkr.py`
