@@ -3,6 +3,9 @@ updates:
   - package-ecosystem: pip            # hash-locked requirements/*.txt (regenerate with uv pip compile)
     directory: /requirements
     schedule: { interval: monthly }
+    groups:                           # one PR for all Python pins: coupled packages (pydantic +
+      python-deps:                    # pydantic-core) must move together or imports fail
+        patterns: ["*"]
   - package-ecosystem: github-actions # Actions are pinned to commit SHAs
     directory: /
     schedule: { interval: monthly }
