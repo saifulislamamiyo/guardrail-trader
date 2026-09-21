@@ -22,7 +22,7 @@ services:
     # No settings volume: IBC re-applies config from env on every start (a fresh named
     # volume is root-owned and IB Gateway runs as uid 1000 -> 'jts.ini: Permission denied').
     # "stable" channel 10.45.1h, pinned by digest (Dependabot bumps it)
-    image: ghcr.io/gnzsnz/ib-gateway:10.45.1h@sha256:d39c30526f2c20b37fa5ae89d81057e93d9c37fccd11120b68d8d2b1f2c80b66
+    image: ghcr.io/gnzsnz/ib-gateway:10.51.1a@sha256:5d5046f70702bc9e9aebf42f139a394aa89aaa3cbb16800df80931f50c06977c
     restart: unless-stopped
     env_file: docker/gateway.env                   # TWS_USERID
     environment:
