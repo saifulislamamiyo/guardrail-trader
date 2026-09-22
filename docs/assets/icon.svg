@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="guardrail-trader bot">
+  <rect width="512" height="512" rx="112" fill="#00897B"/>
+  <line x1="256" y1="104" x2="256" y2="146" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round"/>
+  <circle cx="256" cy="92" r="22" fill="#FFFFFF"/>
+  <rect x="84" y="222" width="30" height="92" rx="12" fill="#FFFFFF"/>
+  <rect x="398" y="222" width="30" height="92" rx="12" fill="#FFFFFF"/>
+  <rect x="122" y="146" width="268" height="244" rx="64" fill="#FFFFFF"/>
+  <circle cx="202" cy="244" r="30" fill="#004D40"/>
+  <circle cx="310" cy="244" r="30" fill="#004D40"/>
+  <path d="M204 316 Q256 352 308 316" fill="none" stroke="#004D40" stroke-width="18" stroke-linecap="round"/>
+</svg>
