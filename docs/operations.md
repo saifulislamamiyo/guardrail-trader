@@ -17,7 +17,7 @@ repo's own path, so anyone who clones the repo gets identical agents:
 |---|---|---|
 | `com.guardrail-trader.scheduler` | every 900 s (`StartInterval`) | `.venv/bin/python scripts/scheduled_run.py` |
 | `com.guardrail-trader.dashboard` | at login, restarted if it exits (`KeepAlive`) | `.venv/bin/python scripts/dashboard.py --no-browser` |
-| `com.guardrail-trader.awake` | 23:00 local (`StartCalendarInterval`) and at load | `.venv/bin/python scripts/keep_awake.py` |
+| `com.guardrail-trader.awake` | `KEEP_AWAKE_START` local, default 18:00 (`StartCalendarInterval`), and at load | `.venv/bin/python scripts/keep_awake.py` |
 
 All three use the project's **venv Python**, and write logs to `logs/<label>.log`.
 
@@ -30,7 +30,8 @@ All three use the project's **venv Python**, and write logs to `logs/<label>.log
 [`keep_awake.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/scripts/keep_awake.py) computes how long to stay awake, then replaces itself with
 `caffeinate -i -s -t <seconds>`:
 
-- From 23:00 local until **16:00 New York** (after the close slot), on nights before a US weekday.
+- From `KEEP_AWAKE_START` (default **18:00** local) until **16:00 New York** (after the close slot), on evenings
+  before a US trading day. Change it with `KEEP_AWAKE_START=19:30 scripts/launchd.sh docker-mode` (or `install`).
 - Outside that window, or on US weekends, it exits immediately, so the Mac can sleep normally.
 
 Inspect what launchd has loaded:

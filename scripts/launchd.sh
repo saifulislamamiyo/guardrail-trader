@@ -4,12 +4,16 @@
 #   render       print the plists that would be installed (review before installing)
 #   install      native mode: scheduler + keep-awake + dashboard
 #   docker-mode  Docker runs scheduler + dashboard; only keep-awake stays on the host
-#   keep-awake runs 23:00 local -> 16:00 New York on US trading nights (scripts/keep_awake.py)
+#   keep-awake runs KEEP_AWAKE_START (default 18:00) local -> 16:00 New York on US trading nights
+#   (scripts/keep_awake.py). Change it with e.g.: KEEP_AWAKE_START=19:30 scripts/launchd.sh docker-mode
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PY="$ROOT/.venv/bin/python"
 LA="$HOME/Library/LaunchAgents"
+AWAKE_START="${KEEP_AWAKE_START:-18:00}"
+[[ "$AWAKE_START" =~ ^(1[2-9]|2[0-3]):[0-5][0-9]$ ]] || { echo "KEEP_AWAKE_START must be HH:MM between 12:00 and 23:59" >&2; exit 2; }
+AWAKE_HOUR=$((10#${AWAKE_START%%:*})); AWAKE_MIN=$((10#${AWAKE_START##*:}))
 [[ "${1:-}" == "render" ]] && LA="$(mktemp -d)"   # render: write to a temp dir, print, install nothing
 DOMAIN="gui/$(id -u)"
 LABELS=(com.guardrail-trader.scheduler com.guardrail-trader.awake com.guardrail-trader.dashboard)
@@ -54,9 +58,11 @@ awake_plist() {  # keep-awake only for tonight's trading runs (see scripts/keep_
     <string>$ROOT/scripts/keep_awake.py</string>
   </array>
   <key>StartCalendarInterval</key>
-  <dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
+  <dict><key>Hour</key><integer>$AWAKE_HOUR</integer><key>Minute</key><integer>$AWAKE_MIN</integer></dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><false/>
+  <key>EnvironmentVariables</key>
+  <dict><key>KEEP_AWAKE_START</key><string>$AWAKE_START</string></dict>
   <key>StandardOutPath</key><string>$ROOT/logs/com.guardrail-trader.awake.log</string>
   <key>StandardErrorPath</key><string>$ROOT/logs/com.guardrail-trader.awake.log</string>
 </dict>
