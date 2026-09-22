@@ -83,7 +83,7 @@ tokens per month.
 ## Regenerating the screenshots
 
 ```bash
-.venv/bin/pip install -e ".[docs]"
+.venv/bin/pip install -e ".[screenshots]"
 .venv/bin/python -m playwright install chromium
 .venv/bin/python scripts/screenshot_dashboard.py    # dashboard must be running on :8765
 ```

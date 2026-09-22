@@ -33,11 +33,17 @@ RUN apt-get update \
 RUN useradd --create-home --uid 1000 bot
 WORKDIR /app
 
-# Runtime dependencies only, every package hash-checked (requirements/runtime.txt, made by uv).
+# Runtime dependencies exactly as locked in uv.lock, every package hash-checked, then
+# `pip check` fails the build if any installed package's requirements aren't met.
+# uv is only mounted for the build (pinned by digest), not left in the image.
 # The package itself is not pip-installed: /app is on PYTHONPATH, and the code finds data/,
 # config/ and web/ relative to /app. No tests or dev tools in the image.
-COPY requirements/runtime.txt ./requirements/runtime.txt
-RUN pip install --require-hashes --no-deps -r requirements/runtime.txt
+COPY pyproject.toml uv.lock ./
+RUN --mount=from=ghcr.io/astral-sh/uv:0.10.12@sha256:72ab0aeb448090480ccabb99fb5f52b0dc3c71923bffb5e2e26517a1c27b7fec,source=/uv,target=/bin/uv \
+    uv export --frozen --no-emit-project --no-dev --format requirements-txt -o /tmp/requirements.txt \
+ && pip install --require-hashes --no-deps -r /tmp/requirements.txt \
+ && pip check \
+ && rm /tmp/requirements.txt
 ENV PYTHONPATH=/app
 
 COPY guardrail_trader ./guardrail_trader
