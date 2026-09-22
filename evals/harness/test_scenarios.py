@@ -124,15 +124,35 @@ def test_corrupt_candidate_price_blocks_orders_for_it(tmp_path, bad):
     assert bot.broker.orders == {} and out.status == "ok"
 
 
-@pytest.mark.xfail(strict=True, reason="KNOWN GAP: a one-off price spike raises the peak for good, so the next "
-                                       "normal run looks like a crash. Needs a price sanity check (owner decision).")
 def test_one_off_price_spike_does_not_trigger_the_kill_switch(tmp_path):
-    """Invariant: a single corrupt quote must not cause a liquidation later."""
+    """Invariant: a single corrupt quote must not cause a liquidation later (peak needs 2 runs)."""
     bot = Bot(tmp_path, holdings=HELD)
     bot.run()
     bot.run(market=SimMarket({**PRICES, "AAA:USD": 1000.0}, open_=False))   # bad tick: 10x
     out = bot.run()                                                          # prices back to normal
     assert out.status != "kill_switch" and bot.j.holdings_qty() != {}
+
+
+def test_real_rise_raises_the_peak_one_run_later(tmp_path):
+    """Invariant: genuine gains are protected by the kill switch, one run after they appear."""
+    bot = Bot(tmp_path, holdings=HELD)
+    bot.run()
+    up = {**PRICES, "AAA:USD": 200.0, "BBB:USD": 100.0}                     # value ~A$7,700
+    bot.run(market=SimMarket(up, open_=False))
+    bot.run(market=SimMarket(up, open_=False))                               # seen twice -> peak
+    assert bot.j.peak() > 7000
+    out = bot.run(market=SimMarket({**up, "AAA:USD": 60.0, "BBB:USD": 25.0}))   # then a real crash
+    assert out.status == "kill_switch"
+
+
+@pytest.mark.xfail(strict=True, reason="KNOWN GAP: a one-off DOWNWARD bad tick (positive but far too low) "
+                                       "fires the kill switch immediately; confirming a crash over 2 runs would "
+                                       "delay real crash protection (owner decision).")
+def test_one_off_downward_bad_tick_does_not_liquidate(tmp_path):
+    bot = Bot(tmp_path, holdings=HELD)
+    bot.run()
+    out = bot.run(market=SimMarket({**PRICES, "AAA:USD": 1.0, "BBB:USD": 0.5}))   # 1/100th: bad data
+    assert out.status != "kill_switch"
 
 
 # ------------------------------------------------------------------ the broker misbehaves

@@ -33,9 +33,9 @@ def test_portfolio_state_values_holdings_and_tracks_peak(j):
     j.record_fill("BBB", "AUD", "BUY", 4, 5.0, commission=0.5, fx_to_base=1.0)
     s = j.portfolio_state({"BBB:AUD": 6.0})
     assert s.value_base == pytest.approx(79.5 + 24.0)
-    assert j.peak() == pytest.approx(103.5)
+    assert j.peak() == pytest.approx(100.0)            # starts at capital; 103.5 not yet confirmed
     s = j.portfolio_state({"BBB:AUD": 4.0})
-    assert s.peak_value_base == pytest.approx(103.5)  # peak never goes down
+    assert s.peak_value_base == pytest.approx(100.0)  # peak never goes down
     with pytest.raises(KeyError):
         j.portfolio_state({})  # refuses to value a holding without a price
 
@@ -58,3 +58,28 @@ def test_decisions_and_orders_are_journaled_and_counted(j):
     rows = j.db.execute("SELECT approved, reason FROM proposals").fetchall()
     assert [(r["approved"], r["reason"]) for r in rows] == [(1, "because"), (0, "because")]
     j.finish_run(run, "ok", j.portfolio_state({}))
+
+
+def test_peak_only_rises_to_a_value_seen_on_two_consecutive_runs(j):
+    j.record_fill("BBB", "AUD", "BUY", 4, 5.0, commission=0.5, fx_to_base=1.0)   # cash 79.5; peak = capital 100
+    j.portfolio_state({"BBB:AUD": 5.0})                    # 99.5
+    assert j.portfolio_state({"BBB:AUD": 50.0}).peak_value_base == pytest.approx(100.0)  # spike 279.5: unconfirmed
+    assert j.portfolio_state({"BBB:AUD": 5.0}).peak_value_base == pytest.approx(100.0)   # back to normal
+    j.portfolio_state({"BBB:AUD": 6.0})                    # real rise to 103.5, seen once
+    assert j.peak() == pytest.approx(100.0)
+    j.portfolio_state({"BBB:AUD": 6.5})                    # 105.5 -> 103.5 confirmed
+    assert j.peak() == pytest.approx(103.5)
+
+
+def test_revaluation_in_the_same_run_does_not_confirm_a_spike(j):
+    j.record_fill("BBB", "AUD", "BUY", 4, 5.0, commission=0.5, fx_to_base=1.0)
+    j.portfolio_state({"BBB:AUD": 5.0})
+    j.portfolio_state({"BBB:AUD": 50.0})                   # spike run...
+    j.portfolio_state({"BBB:AUD": 50.0}, observe=False)    # ...its post-trade valuation
+    assert j.peak() == pytest.approx(100.0)
+
+
+def test_existing_journal_without_last_value_does_not_raise_peak_on_first_run(j):
+    j._set("peak_base", "100.0")                            # journal from before this change
+    j.record_fill("BBB", "AUD", "BUY", 4, 5.0, commission=0.5, fx_to_base=1.0)
+    assert j.portfolio_state({"BBB:AUD": 50.0}).peak_value_base == pytest.approx(100.0)

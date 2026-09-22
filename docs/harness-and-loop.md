@@ -89,6 +89,14 @@ still working, and books only real fills:
 | Tool errors | Returned to Claude as `is_error` results instead of crashing. | `agent.py` → `_dispatch()` |
 | Observability | Proposals, reasons, verdicts, orders, fills, cost and full transcripts recorded. | journal · `data/runs/run_<id>.json` · [Dashboard](dashboard.md) |
 
+## The peak (for the kill switch)
+
+Drawdown is measured from the portfolio's peak value. The peak only rises to a value **seen on two
+consecutive runs** (the lower of this run's and the previous run's value), so one bad price tick
+can't inflate it and cause a false kill switch later. Real gains count one run later. Only the
+run's first valuation counts; the re-valuation after trading doesn't.
+Source: [`journal.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/guardrail_trader/journal.py) → `observe_value()`.
+
 ## The risk gate
 
 Every proposal passes the gate **twice**: when Claude calls `check_orders`/`submit_orders` (so it
@@ -101,7 +109,7 @@ break a limit that each order passes alone.
 | Only allowlisted instruments | universe CSVs | `[universe] files` |
 | Max single holding | 25% of portfolio | `max_position_pct` |
 | Max orders per calendar month | 10 | `max_trades_per_month` |
-| Kill switch: drawdown from peak | 25% → sell all, halt until manual reset | `max_drawdown_pct` |
+| Kill switch: drawdown from peak | 25% → sell all, halt until manual reset; holdings left unsold (market closed) are sold at the next open run | `max_drawdown_pct` |
 | Limit price within ± of reference | 2% | `max_price_deviation_pct` |
 | Commission ≤ share of order value | 10% | `max_commission_pct` |
 | Whole shares only | on | `allow_fractional` |
