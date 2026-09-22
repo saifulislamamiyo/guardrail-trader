@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/assets/icon.svg" alt="guardrail-trader bot icon" width="96"></p>
+
 # guardrail-trader
 
 An autonomous stock-trading agent for **Interactive Brokers (IBKR)**, built as a learning project in
