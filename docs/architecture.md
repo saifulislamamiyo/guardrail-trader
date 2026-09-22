@@ -23,7 +23,7 @@ flowchart TB
         subgraph la[launchd LaunchAgents]
             SCH[com.guardrail-trader.scheduler<br/>every 15 min]
             DSH[com.guardrail-trader.dashboard<br/>KeepAlive]
-            AWK[com.guardrail-trader.awake<br/>23:00 local]
+            AWK[com.guardrail-trader.awake<br/>18:00 local by default]
         end
         GW[IB Gateway app<br/>127.0.0.1:4002]
         SCH --> RUN[.venv python<br/>run_bot.py]
