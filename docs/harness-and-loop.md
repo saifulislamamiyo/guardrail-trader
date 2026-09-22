@@ -111,7 +111,7 @@ break a limit that each order passes alone.
 |---|---|---|
 | Only allowlisted instruments | universe CSVs | `[universe] files` |
 | Max single holding | 25% of portfolio | `max_position_pct` |
-| Max orders per calendar month | 10 | `max_trades_per_month` |
+| Max orders per calendar month (Sydney); once used up, runs skip Claude until the 1st | 10 | `max_trades_per_month` |
 | Kill switch: drawdown from peak | 25% → sell all, halt until manual reset; holdings left unsold (market closed) are sold at the next open run | `max_drawdown_pct` |
 | Limit price within ± of reference | 2% | `max_price_deviation_pct` |
 | Commission ≤ share of order value | 10% | `max_commission_pct` |

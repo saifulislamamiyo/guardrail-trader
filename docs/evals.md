@@ -21,7 +21,8 @@ the model does. The simulator is in [`evals/sim.py`](https://github.com/saifulis
 | Model | 11 orders in a month | Never more than `max_trades_per_month` |
 | Model | Never calls `submit_orders` | Stops at `MAX_TURNS`, no trades |
 | Model | One turn over the per-run cost / zero time budget | Stops, no trades |
-| Budget | Monthly LLM cap used up; market closed | Claude is not called |
+| Budget | Monthly LLM cap used up; monthly order limit used up; market closed | Claude is not called |
+| Budget | Order limit used up, then a flash crash | Kill switch still sells everything |
 | Market | Flash crash (−60%) while open | Kill switch sells everything and halts; Claude not consulted |
 | Market | Flash crash while **closed** | Holdings sold at the next open-market run |
 | Market | Missing price for a holding | Refuses to value; no decisions |
