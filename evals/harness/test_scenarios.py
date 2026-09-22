@@ -221,6 +221,29 @@ def test_late_fill_after_cancel_stops_the_next_run(tmp_path):
     assert nxt.rc == 3 and nxt.llm_calls == 0
 
 
+def test_gateway_that_serves_no_data_is_retryable_not_a_reconcile_failure(tmp_path):
+    """Invariant: timed-out requests (empty positions) never read as an emptied account.
+
+    Seen live 23 Sep 2026: every IBKR request timed out during the nightly re-login, positions
+    came back empty, and a healthy six-holding portfolio was reported as a mismatch.
+    """
+    bot = Bot(tmp_path, holdings=HELD)
+    bot.broker.not_ready = True
+    bot.broker.holdings = {}                       # what a timed-out positions request looks like
+    out = bot.run(submits(order("CCC", 1)))
+    assert out.rc == 2 and out.status == "broker_not_ready"     # rc 2 = the scheduler retries
+    assert out.llm_calls == 0 and bot.broker.orders == {}
+    assert bot.j.holdings_qty() != {}                           # journal untouched
+
+
+def test_all_cash_portfolio_does_not_trade_on_a_dead_gateway(tmp_path):
+    """The dangerous case: with an empty journal, empty positions would *match* and pass."""
+    bot = Bot(tmp_path)                            # no holdings: journal {} == positions {}
+    bot.broker.not_ready = True
+    out = bot.run(submits(order("CCC", 1)))
+    assert out.status == "broker_not_ready" and out.llm_calls == 0 and bot.broker.orders == {}
+
+
 def test_manual_trade_in_the_account_stops_the_bot(tmp_path):
     bot = Bot(tmp_path)
     bot.broker.holdings["AAA:USD"] = 1                  # someone traded by hand

@@ -1,7 +1,9 @@
 """Safety checks must hold without a broker connection."""
 import pytest
 
-from guardrail_trader.broker import BrokerSafetyError, IBKRBroker, check_account, check_endpoint
+from guardrail_trader.broker import (
+    BrokerNotReadyError, BrokerSafetyError, IBKRBroker, check_account, check_endpoint,
+)
 from guardrail_trader.config import IBKRConfig
 
 
@@ -67,3 +69,29 @@ def test_context_manager_does_not_reconnect_when_already_connected(monkeypatch):
     monkeypatch.setattr(b, "connect", lambda: pytest.fail("connect() called twice"))
     with b as same:
         assert same is b
+
+
+# -- gateway connected but not serving data (IBKR's nightly re-login) -------------------------
+class _Summary:
+    def __init__(self, tag, value, currency="AUD"):
+        self.tag, self.value, self.currency = tag, value, currency
+
+
+def _broker(summary_rows):
+    from types import SimpleNamespace as NS
+    b = IBKRBroker.__new__(IBKRBroker)
+    b.ib, b.account_id = NS(accountSummary=lambda _a: summary_rows), "DU1234567"
+    return b
+
+
+def test_ensure_ready_passes_when_the_account_summary_has_data():
+    snap = _broker([_Summary("NetLiquidation", "5000.0"), _Summary("TotalCashValue", "100.0"),
+                    _Summary("AvailableFunds", "100.0")]).ensure_ready()
+    assert snap.net_liquidation == 5000.0 and snap.currency == "AUD"
+
+
+@pytest.mark.parametrize("rows", [[], [_Summary("NetLiquidation", "0.0")], [_Summary("TotalCashValue", "10.0")]])
+def test_ensure_ready_raises_when_requests_time_out(rows):
+    """Empty/zero account summary = requests timed out; positions would come back empty too."""
+    with pytest.raises(BrokerNotReadyError):
+        _broker(rows).ensure_ready()

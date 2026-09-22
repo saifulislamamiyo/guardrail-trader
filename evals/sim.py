@@ -12,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from typing import Callable
 
+from guardrail_trader.broker import BrokerNotReadyError
 from guardrail_trader.broker.ibkr import OrderResult
 from guardrail_trader.journal import Journal
 from guardrail_trader.pipeline import LLMSetup, run_once
@@ -54,10 +55,16 @@ class SimBroker:
         self.orders: dict[int, SimOrder] = {}
         self._ids = itertools.count(100)
         self.fail_positions: Exception | None = None
+        self.not_ready = False                      # gateway answers, but serves no account data
         self.fail_place_after: int | None = None    # raise on the Nth+1 place_order
         self.open: list = []                        # stray open orders reported by open_orders()
 
     # reads
+    def ensure_ready(self):
+        if self.not_ready:
+            raise BrokerNotReadyError("simulated: account summary empty (nightly re-login)")
+        return NS(account_id="DU0000000", net_liquidation=5000.0, currency="AUD")
+
     def positions(self):
         if self.fail_positions:
             raise self.fail_positions

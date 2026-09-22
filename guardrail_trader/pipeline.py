@@ -3,7 +3,8 @@
 A plain function with its dependencies passed in (broker, market data, journal, LLM, clock), so
 the CLI (scripts/run_bot.py) and the scenario evals (evals/) drive exactly the same code.
 
-Return codes: 0 ok/skipped, 1 error, 3 reconciliation failed (needs a human).
+Return codes: 0 ok/skipped, 1 error, 2 broker not ready (transient - retry), 3 reconciliation
+failed (needs a human).
 """
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from guardrail_trader.agent import TradingAgent
+from guardrail_trader.broker import BrokerNotReadyError
 from guardrail_trader.config import PROJECT_ROOT
 from guardrail_trader.executor import execute
 from guardrail_trader.journal import Journal
@@ -99,6 +101,17 @@ def run_once(broker, market, j: Journal, cfg: RiskConfig, llm: LLMSetup, *, mode
     run_id = j.start_run(mode)
     log(f"run {run_id} mode={mode} universe={len(cfg.universe)} budget={cfg.capital:g} {cfg.base_currency}")
     try:
+        # 0. Is the gateway actually serving data? A connected socket is not enough: after IBKR's
+        # nightly reset every request times out and positions come back empty, which would look
+        # like an emptied account in the reconciliation below.
+        try:
+            snap = broker.ensure_ready()
+        except BrokerNotReadyError as e:
+            j.finish_run(run_id, "broker_not_ready", notes=str(e))
+            log(f"BROKER NOT READY: {e} Skipping; no Claude call, no orders.")
+            return 2
+        log(f"broker ready: {snap.account_id} net liquidation {snap.net_liquidation:,.2f} {snap.currency}")
+
         # 1. Reconcile: the ledger must match what IBKR actually holds.
         ibkr = {instrument_key(p.symbol, p.currency): p.quantity for p in broker.positions() if abs(p.quantity) > 1e-9}
         mine = j.holdings_qty()
