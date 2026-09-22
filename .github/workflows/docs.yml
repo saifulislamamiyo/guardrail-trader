@@ -24,6 +24,7 @@ jobs:
           python-version: "3.13"
       - run: uv sync --frozen --extra docs --no-install-project
       - run: uv run --no-sync mkdocs build --strict
+      - run: uv run --no-sync python scripts/check_docs_ai_actions.py   # every page has the Ask-AI row
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: site

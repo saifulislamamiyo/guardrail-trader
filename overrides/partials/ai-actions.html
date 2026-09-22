@@ -1,0 +1,13 @@
+{#- "Ask AI about this page": links out with a prompt that contains only public URLs.
+    raw = the page's Markdown source on GitHub (what a model reads most reliably). -#}
+{%- if page and page.file and page.canonical_url -%}
+{%- set raw = "https://raw.githubusercontent.com/saifulislamamiyo/guardrail-trader/main/docs/" ~ page.file.src_uri -%}
+{%- set prompt = "Read " ~ page.canonical_url ~ " (Markdown source: " ~ raw ~ ") from the guardrail-trader docs, then help me understand it. I will ask follow-up questions." -%}
+<div class="ai-actions" aria-label="Ask AI about this page">
+  <span class="ai-actions__label">Ask AI about this page:</span>
+  <a class="md-button ai-actions__btn" data-ai="claude" href="https://claude.ai/new?q={{ prompt | urlencode }}" target="_blank" rel="noopener noreferrer">Open in Claude</a>
+  <a class="md-button ai-actions__btn" data-ai="chatgpt" href="https://chatgpt.com/?q={{ prompt | urlencode }}" target="_blank" rel="noopener noreferrer">Open in ChatGPT</a>
+  <a class="md-button ai-actions__btn" data-ai="markdown" href="{{ raw }}" target="_blank" rel="noopener noreferrer">View as Markdown</a>
+  <button type="button" class="md-button ai-actions__btn" data-ai="copy" data-src="{{ raw }}">Copy page</button>
+</div>
+{%- endif -%}

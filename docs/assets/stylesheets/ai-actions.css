@@ -1,0 +1,8 @@
+/* "Ask AI about this page" row (overrides/partials/ai-actions.html) */
+.ai-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: 0 0 1rem; font-size: .7rem; }
+.ai-actions__label { color: var(--md-default-fg-color--light); margin-right: .2rem; }
+.md-typeset .ai-actions__btn, .ai-actions__btn {
+  display: inline-flex; align-items: center; box-sizing: border-box; height: 1.7rem; margin: 0;
+  padding: 0 .8em; font: inherit; font-weight: 700; line-height: 1; border-width: .05rem;
+  background: transparent; cursor: pointer;
+}
