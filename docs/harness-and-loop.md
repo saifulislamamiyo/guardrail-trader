@@ -52,6 +52,9 @@ Every one of these ends the run with **no trades**.
 
 Claude never talks to the broker. `submit_orders` only hands proposals back to the harness.
 
+For what Claude looks at when picking stocks, and how an ML model could plug in, see
+[How stocks are chosen](stock-selection.md).
+
 ## Feedback inside the loop and across runs
 
 - **Same run:** `check_orders` dry-runs proposals through the real gate. If `submit_orders` still
