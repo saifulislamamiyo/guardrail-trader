@@ -17,7 +17,7 @@ not investment advice. Automated trading can lose money.
 ## How it works
 
 ```mermaid
-flowchart LR
+flowchart TD
     S[launchd scheduler<br/>2 slots per US trading day] --> R[run_bot.py]
     R --> REC{Reconcile<br/>journal vs IBKR}
     REC -- mismatch --> STOP1[Stop: needs a human]
