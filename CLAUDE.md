@@ -13,7 +13,7 @@ Docs: https://saifulislamamiyo.github.io/guardrail-trader/
 - Every gate rule has a unit test; run `.venv/bin/python -m pytest -q` before committing.
 - Git workflow: never push directly to `main` and never force-push. Work on a branch, push it, open a PR with `gh pr create`; the owner reviews and merges. Keep PRs focused, with CI (`tests`) green.
 - Attribution: never include a Claude session link (`claude.ai/code/session_...`) in commits or PR descriptions, and no `Claude-Session:` trailer. Keep `Co-Authored-By: Claude ...` in commits and the "Generated with Claude Code" line in PR descriptions.
-- After changing dependencies, regenerate the hash-locked `requirements/*.txt` with `uv pip compile ... --generate-hashes` (see docs/operations.md).
+- Dependencies are locked in `uv.lock`. After editing `pyproject.toml` dependencies, run `uv lock` and commit both (CI runs `uv lock --check`).
 
 ## Map
 - Broker adapter (executes, never decides): `guardrail_trader/broker/ibkr.py`

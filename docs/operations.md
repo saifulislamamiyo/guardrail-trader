@@ -68,10 +68,11 @@ In Docker, prefix with `docker compose exec bot python` instead of `.venv/bin/py
 
 | What | Pinned by | Updated by |
 |---|---|---|
-| Python packages (image, CI) | `requirements/*.txt` with sha256 hashes, installed with `--require-hashes` | Dependabot, or `uv pip compile pyproject.toml --universal --python-version 3.13 --generate-hashes -o requirements/runtime.txt` |
+| Python packages (image, CI) | `uv.lock` with sha256 hashes; image installs with `--require-hashes`, then `pip check` | Dependabot (`uv` ecosystem re-resolves the whole graph), or `uv lock --upgrade` |
 | Base image, IB Gateway image | digest (`@sha256:…`) | Dependabot |
 | GitHub Actions | commit SHA | Dependabot |
 | supercronic | SHA-256 of the release binary | manual |
+| uv (image build, CI) | image digest / version `0.10.12` | GitHub Action by Dependabot; image digest manual |
 
 ## Dashboard hardening
 

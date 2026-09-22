@@ -13,8 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
+          version: "0.10.12"
           python-version: "3.13"
-      - run: pip install --require-hashes --no-deps -r requirements/dev.txt
-      - run: python -m pytest -q          # no broker or API key needed
+      - run: uv lock --check                       # uv.lock matches pyproject.toml
+      - run: uv sync --frozen --extra dev          # exactly uv.lock, hash-verified
+      - run: uv pip check                          # every package's requirements are satisfied
+      - run: uv run --no-sync python -m pytest -q  # unit tests + harness evals; no broker or API key
