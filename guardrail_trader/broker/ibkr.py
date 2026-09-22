@@ -22,6 +22,10 @@ from guardrail_trader.config import LIVE_PORTS, MARKET_DATA_TYPES, PAPER_PORTS, 
 UNSET_DOUBLE = 1.7976931348623157e308  # IBKR's "no value" sentinel
 
 
+class BrokerNotReadyError(RuntimeError):
+    """Connected to IB Gateway, but it isn't serving account data (yet). Transient: retry."""
+
+
 class BrokerSafetyError(RuntimeError):
     """Raised when a safety check fails. Never catch-and-continue on this."""
 
@@ -153,6 +157,22 @@ class IBKRBroker:
             cash=get("TotalCashValue"),
             available_funds=get("AvailableFunds"),
         )
+
+    def ensure_ready(self) -> AccountSnapshot:
+        """Confirm the gateway is actually serving data, not just accepting the socket.
+
+        After IBKR's nightly reset the gateway can be connected while every request times out:
+        the account summary comes back empty and positions come back as an empty list. An empty
+        list then looks exactly like "this account holds nothing", which is how a healthy
+        portfolio once got reported as a reconciliation mismatch. Checked before any decision.
+        """
+        snap = self.account_snapshot()
+        if not snap.net_liquidation > 0 or snap.currency == "?":     # NaN-safe
+            raise BrokerNotReadyError(
+                f"IB Gateway is connected but not serving account data for "
+                f"{self.account_id or '(no account)'} (account summary empty). This is usually "
+                f"IBKR's nightly re-login; the run should be retried shortly.")
+        return snap
 
     def positions(self) -> list[Position]:
         return [

@@ -102,6 +102,13 @@ cloudflared tunnel --url http://127.0.0.1:8765 --http-host-header 127.0.0.1:8765
     IBKR allows one session per username. Only one of the native app or the `ib-gateway` container
     may be logged in.
 
+??? question "A run logged *BROKER NOT READY* (status `broker_not_ready`)"
+    IB Gateway accepted the connection but served no data: the logs show `positions request timed
+    out`, `account updates ... request timed out`. This is usually IBKR's nightly re-login, which
+    IBC completes on its own. The run stops before any decision and **the scheduler retries it**
+    on the next 15-minute tick, up to 3 attempts in the slot. If it persists, check
+    `docker compose logs ib-gateway` for a "Re-login is required" dialog.
+
 ??? question "A run stopped with *RECONCILE FAILED* (status `reconcile_failed`)"
     The journal's holdings differ from IBKR's positions or there are open orders at IBKR (for example, you traded manually in the
     paper account). The bot refuses to trade until they match. Undo the manual trade, or fix the

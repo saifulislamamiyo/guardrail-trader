@@ -93,11 +93,12 @@ is the same file in both modes.
 
 ## Data flow of one run
 
-1. **Reconcile:** journal holdings must equal IBKR positions, with no stray open orders.
-2. **Price:** the whole universe plus FX to the base currency.
-3. **Kill switch:** if drawdown from peak ≥ the limit, sell everything and halt.
-4. **Claude:** the agent loop, only if the market is open and the monthly LLM cap has room.
-5. **Gate:** final, authoritative check of every proposal.
-6. **Execute:** place approved limit orders, wait for fills, cancel leftovers, book fills.
+1. **Broker ready?** the gateway must actually serve account data (a connected socket isn't enough).
+2. **Reconcile:** journal holdings must equal IBKR positions, with no stray open orders.
+3. **Price:** the whole universe plus FX to the base currency.
+4. **Kill switch:** if drawdown from peak ≥ the limit, sell everything and halt.
+5. **Claude:** the agent loop, only if the market is open and the monthly LLM cap has room.
+6. **Gate:** final, authoritative check of every proposal.
+7. **Execute:** place approved limit orders, wait for fills, cancel leftovers, book fills.
 
 Every step writes to the journal, which the dashboard reads.

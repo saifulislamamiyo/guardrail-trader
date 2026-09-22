@@ -25,6 +25,16 @@ LOGS = ROOT / "logs"
 NY = ZoneInfo("America/New_York")
 SLOTS = {"open": (time(10, 30), time(11, 30)), "close": (time(15, 0), time(15, 40))}
 MAX_ATTEMPTS = 3
+DONE_CODES = (0, 3)   # 0 = ran / market closed / halted; 3 = reconcile failed (needs a human)
+
+
+def slot_done(rc: int) -> bool:
+    """Is this slot finished, or worth another attempt within its window?
+
+    Retry transient failures - rc 1 (error) and rc 2 (gateway connected but serving no data,
+    e.g. during IBKR's nightly re-login) - up to MAX_ATTEMPTS.
+    """
+    return rc in DONE_CODES
 
 
 def current_slot(now_ny: datetime) -> str | None:
@@ -81,8 +91,7 @@ def main(argv: list[str]) -> int:
         with open(log_path, "w") as log:
             rc = subprocess.run([sys.executable, str(ROOT / "scripts" / "run_bot.py")],
                                 cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, timeout=1800).returncode
-        # 0 = ran / market closed / halted; 3 = reconcile failed (needs a human, don't retry)
-        entry["done"] = rc in (0, 3)
+        entry["done"] = slot_done(rc)
         entry["last_rc"] = rc
         entry["last_log"] = str(log_path.relative_to(ROOT))
         entry["at_ny"] = now_ny.isoformat(timespec="seconds")
