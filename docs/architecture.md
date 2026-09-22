@@ -8,7 +8,7 @@ The same Python package runs in both modes. Only the **host** of each component 
 |---|---|---|
 | IB Gateway | IBKR's API endpoint. The bot talks to it over the TWS socket API (`ib_async`). | external |
 | Scheduler | Every 15 minutes: "is it a trading slot, and has this slot already run?" | [`scripts/scheduled_run.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/scripts/scheduled_run.py) |
-| Trader run | Reconcile → price → kill switch → Claude → gate → execute | [`scripts/run_bot.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/scripts/run_bot.py) |
+| Trader run | Reconcile → price → kill switch → Claude → gate → execute | [`guardrail_trader/pipeline.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/guardrail_trader/pipeline.py) → `run_once()`, CLI [`scripts/run_bot.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/scripts/run_bot.py) |
 | Agent | The Claude loop and its tools | [`guardrail_trader/agent.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/guardrail_trader/agent.py) |
 | Risk gate | Pure functions that approve or block each proposal | [`guardrail_trader/risk/gate.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/guardrail_trader/risk/gate.py) |
 | Journal | SQLite: ledger, runs, proposals, orders, snapshots, LLM usage | [`guardrail_trader/journal.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/guardrail_trader/journal.py) |

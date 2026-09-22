@@ -1,0 +1,186 @@
+"""Scenario evals: the real pipeline (run_once) against a simulated broker, market and Claude.
+
+Each scenario states the invariant it checks. The harness passes when the invariant holds no matter
+what the market, the broker or the model does. Deterministic; runs in CI with the unit tests.
+"""
+from types import SimpleNamespace as NS
+
+import pytest
+
+from evals.sim import PRICES, Bot, ScriptedClaude, SimMarket, order, submits
+
+HELD = {"AAA:USD": (8, 100.0), "BBB:USD": (20, 50.0)}       # ~A$2,700 of A$5,000 invested
+CRASH = {"AAA:USD": 40.0, "BBB:USD": 20.0, "CCC:USD": 20.0}  # -60%: drawdown ~32%, over the 25% kill switch
+
+
+# ------------------------------------------------------------------ the model misbehaves
+def test_limit_breaking_orders_never_reach_the_broker(tmp_path):
+    """Invariant: only gate-approved orders reach the broker, whatever the model submits."""
+    bad = [order("ZZZ", 1),                          # not on the allowlist
+           order("AAA", 20),                         # 20 x A$150 = 60% of portfolio (> 25%)
+           order("BBB", 5, px=0),                    # market order / no limit price
+           order("CCC", 5, action="SELL"),           # short sale (nothing held)
+           order("CCC", 1.5),                        # fractional
+           order("BBB", 5, px=60.0),                 # limit 20% from price (fat finger)
+           order("BBB", float("inf")),               # non-finite quantity
+           order("CCC", 10)]                         # the one valid order
+    bot = Bot(tmp_path)
+    out = bot.run(submits(*bad))
+    assert out.rc == 0 and out.status == "ok"
+    assert [(o.symbol, o.qty) for o in bot.broker.orders.values()] == [("CCC", 10)]
+    assert bot.reconciled()
+
+
+def test_blocked_submit_is_bounced_once_then_valid_orders_go_ahead(tmp_path):
+    """Invariant: the model gets the gate's reasons once, and the loop still terminates."""
+    client = ScriptedClaude([[("submit_orders", {"orders": [order("AAA", 20)], "summary": "too big"})],
+                             [("submit_orders", {"orders": [order("AAA", 5)], "summary": "resized"})]])
+    bot = Bot(tmp_path)
+    out = bot.run(client)
+    assert out.llm_calls == 2
+    assert [(o.symbol, o.qty) for o in bot.broker.orders.values()] == [("AAA", 5)]
+
+
+def test_monthly_order_limit_holds(tmp_path):
+    """Invariant: no more than max_trades_per_month orders reach the broker in a month."""
+    bot = Bot(tmp_path)
+    for _ in range(10):
+        bot.run(submits(order("CCC", 1)))
+    out = bot.run(submits(order("CCC", 1)))
+    assert len(bot.broker.orders) == 10 and out.status == "ok"
+    assert "monthly trade limit" in " ".join(out.logs)
+
+
+def test_model_that_never_submits_trades_nothing(tmp_path):
+    """Invariant: a model looping on tools forever stops at MAX_TURNS with no trades."""
+    bot = Bot(tmp_path)
+    out = bot.run(ScriptedClaude([[("get_portfolio", {})]]))
+    assert out.llm_calls == 20 and bot.broker.orders == {} and out.status == "ok"
+
+
+def test_run_cost_budget_stops_the_loop(tmp_path):
+    """Invariant: one expensive turn over the per-run budget ends the run with no trades."""
+    bot = Bot(tmp_path)
+    out = bot.run(submits(order("CCC", 1)), cost_fn=lambda _m, _u: 0.20, run_budget_usd=0.10)
+    assert out.llm_calls == 1 and bot.broker.orders == {}
+
+
+def test_loop_time_budget_stops_the_loop(tmp_path):
+    bot = Bot(tmp_path)
+    out = bot.run(submits(order("CCC", 1)), max_seconds=0)
+    assert out.llm_calls == 0 and bot.broker.orders == {}
+
+
+def test_monthly_llm_budget_exhausted_means_no_model_call(tmp_path):
+    bot = Bot(tmp_path)
+    run = bot.j.start_run("paper-eval")
+    bot.j.record_llm_usage(run, "eval", "claude-sonnet-5", NS(input_tokens=1, output_tokens=1), 2.50)
+    out = bot.run(submits(order("CCC", 1)), cost_fn=lambda _m, _u: 0.0)
+    assert out.status == "llm_budget_exhausted" and out.llm_calls == 0 and bot.broker.orders == {}
+
+
+def test_market_closed_means_no_model_call(tmp_path):
+    bot = Bot(tmp_path)
+    out = bot.run(submits(order("CCC", 1)), SimMarket(open_=False))
+    assert out.status == "market_closed" and out.llm_calls == 0
+
+
+# ------------------------------------------------------------------ the market misbehaves
+def test_flash_crash_liquidates_and_halts_without_asking_the_model(tmp_path):
+    """Invariant: at >= 25% drawdown, code sells everything and halts; Claude is not consulted."""
+    bot = Bot(tmp_path, holdings=HELD)
+    bot.run()                                            # establishes the peak (~A$5,000)
+    out = bot.run(submits(order("AAA", 1)), SimMarket(CRASH))
+    assert out.status == "kill_switch" and out.llm_calls == 0
+    assert bot.j.is_halted() and bot.j.holdings_qty() == {} and bot.reconciled()
+    assert all(o.action == "SELL" for o in bot.broker.orders.values())
+    later = bot.run(submits(order("CCC", 1)))            # stays halted until a human resets it
+    assert later.status == "halted" and later.llm_calls == 0
+
+
+def test_kill_switch_outside_market_hours_liquidates_at_next_open(tmp_path):
+    """Invariant: holdings are sold at the first open-market run after the kill switch fires."""
+    bot = Bot(tmp_path, holdings=HELD)
+    bot.run()
+    closed = bot.run(market=SimMarket(CRASH, open_=False))
+    assert closed.status == "kill_switch" and bot.broker.orders == {}      # can't sell while closed
+    bot.run(market=SimMarket(CRASH, open_=True))
+    assert bot.j.holdings_qty() == {} and bot.reconciled()
+
+
+def test_missing_price_for_a_holding_refuses_to_value(tmp_path):
+    """Invariant: no valuation (so no kill-switch or trade decision) on incomplete prices."""
+    bot = Bot(tmp_path, holdings=HELD)
+    prices = {k: v for k, v in PRICES.items() if k != "AAA:USD"}
+    out = bot.run(submits(order("CCC", 1)), SimMarket(prices))
+    assert out.rc == 1 and out.llm_calls == 0 and bot.broker.orders == {}
+
+
+@pytest.mark.parametrize("bad", [0.0, float("nan"), -5.0])
+def test_corrupt_candidate_price_blocks_orders_for_it(tmp_path, bad):
+    """Invariant: no order is sized against a zero, negative or NaN reference price."""
+    bot = Bot(tmp_path)
+    out = bot.run(submits(order("CCC", 5, px=20.0)), SimMarket({**PRICES, "CCC:USD": bad}))
+    assert bot.broker.orders == {} and out.status == "ok"
+
+
+@pytest.mark.xfail(strict=True, reason="KNOWN GAP: a one-off price spike raises the peak for good, so the next "
+                                       "normal run looks like a crash. Needs a price sanity check (owner decision).")
+def test_one_off_price_spike_does_not_trigger_the_kill_switch(tmp_path):
+    """Invariant: a single corrupt quote must not cause a liquidation later."""
+    bot = Bot(tmp_path, holdings=HELD)
+    bot.run()
+    bot.run(market=SimMarket({**PRICES, "AAA:USD": 1000.0}, open_=False))   # bad tick: 10x
+    out = bot.run()                                                          # prices back to normal
+    assert out.status != "kill_switch" and bot.j.holdings_qty() != {}
+
+
+# ------------------------------------------------------------------ the broker misbehaves
+def test_broker_disconnect_before_trading_is_an_error_with_no_orders(tmp_path):
+    bot = Bot(tmp_path)
+    bot.broker.fail_positions = ConnectionError("simulated: gateway down")
+    out = bot.run(submits(order("CCC", 1)))
+    assert out.error is not None and out.status == "error" and bot.broker.orders == {} and out.llm_calls == 0
+
+
+def test_disconnect_mid_execution_is_caught_before_the_next_trade(tmp_path):
+    """Invariant: if orders reach IBKR but aren't booked, no further trading until a human looks."""
+    bot = Bot(tmp_path)
+    bot.broker.fail_place_after = 1                     # first order placed (and fills), second fails
+    out = bot.run(submits(order("CCC", 5), order("BBB", 5)))
+    assert out.status == "error"
+    bot.broker.fail_place_after = None
+    nxt = bot.run(submits(order("CCC", 1)))
+    assert nxt.rc == 3 and nxt.status == "reconcile_failed" and nxt.llm_calls == 0
+
+
+def test_partial_fill_books_only_what_filled(tmp_path):
+    bot = Bot(tmp_path)
+    bot.broker.fill = lambda o: (2.0, 0.0)              # 2 of 10 fill, rest cancelled
+    bot.run(submits(order("CCC", 10)))
+    assert bot.j.holdings_qty() == {"CCC:USD": 2.0} and bot.reconciled()
+    assert bot.run().status == "ok"                     # next run reconciles cleanly
+
+
+def test_late_fill_after_cancel_stops_the_next_run(tmp_path):
+    """Invariant: a fill the bot never saw is caught by reconciliation, not traded on top of."""
+    bot = Bot(tmp_path)
+    bot.broker.fill = lambda o: (2.0, 3.0)              # 2 fill now, 3 more after our cancel
+    bot.run(submits(order("CCC", 10)))
+    assert not bot.reconciled()
+    nxt = bot.run(submits(order("CCC", 1)))
+    assert nxt.rc == 3 and nxt.llm_calls == 0
+
+
+def test_manual_trade_in_the_account_stops_the_bot(tmp_path):
+    bot = Bot(tmp_path)
+    bot.broker.holdings["AAA:USD"] = 1                  # someone traded by hand
+    out = bot.run(submits(order("CCC", 1)))
+    assert out.rc == 3 and out.llm_calls == 0
+
+
+def test_stray_open_order_stops_the_bot(tmp_path):
+    bot = Bot(tmp_path)
+    bot.broker.open = [object()]
+    out = bot.run(submits(order("CCC", 1)))
+    assert out.rc == 3 and out.llm_calls == 0

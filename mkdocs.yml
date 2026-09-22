@@ -62,6 +62,7 @@ nav:
       - Native (launchd): setup-native.md
       - Docker: setup-docker.md
   - Harness and agent loop: harness-and-loop.md
+  - Evals: evals.md
   - How to use: configuration.md
   - Dashboard: dashboard.md
   - Operations: operations.md
