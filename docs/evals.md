@@ -26,7 +26,9 @@ the model does. The simulator is in [`evals/sim.py`](https://github.com/saifulis
 | Market | Flash crash while **closed** | Holdings sold at the next open-market run |
 | Market | Missing price for a holding | Refuses to value; no decisions |
 | Market | Zero / negative / NaN price for a candidate | No order sized against it |
-| Market | One-off 10× price spike | **Known gap** (`xfail`): see below |
+| Market | One-off 10× price spike | No false kill switch on the next run (peak needs 2 runs) |
+| Market | Real rise, then a real crash | Peak rises one run late; kill switch still fires |
+| Market | One-off bad tick far **below** the price | **Known gap** (`xfail`): see below |
 | Broker | Disconnect before trading | Error, no orders |
 | Broker | Disconnect mid-execution | Next run stops on reconciliation |
 | Broker | Partial fill; late fill after cancel | Only real fills booked; unseen fills stop the next run |
@@ -40,8 +42,12 @@ the model does. The simulator is in [`evals/sim.py`](https://github.com/saifulis
     - **Fixed:** a kill switch that fired outside market hours halted without selling, and every
       later run returned "halted, nothing to do", so the positions were never liquidated. A halted
       run with holdings now keeps liquidating at each open-market run until flat.
-    - **Open (xfail):** a single corrupt price spike raises the stored peak for good, so the next
-      normal run looks like a crash and triggers the kill switch. Needs a price sanity rule.
+    - **Fixed:** a single corrupt price spike raised the stored peak for good, so the next normal
+      run looked like a crash and triggered the kill switch. The peak now only rises to a value
+      seen on two consecutive runs (`journal.observe_value()`).
+    - **Open (xfail):** the mirror case, a one-off bad tick far *below* the real price, still fires
+      the kill switch at once. Confirming a crash over two runs would also delay protection in a
+      real crash, so this is left as an owner decision.
 
 ## Model evals
 

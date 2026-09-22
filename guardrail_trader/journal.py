@@ -101,13 +101,26 @@ class Journal:
         self._set("halted", "0")
         self._set("halted_reason", "")
         self._set("peak_base", repr(peak_value_base))
+        self._set("last_value_base", repr(peak_value_base))
 
     def peak(self) -> float:
         return float(self._get("peak_base", "0"))
 
-    def update_peak(self, value_base: float) -> float:
-        peak = max(self.peak(), value_base)
+    def observe_value(self, value_base: float) -> float:
+        """Record this run's portfolio value and return the (possibly raised) peak.
+
+        The peak only rises to a value seen on two consecutive runs: min(this run, previous run).
+        A one-off bad price tick can't inflate the peak, so it can't cause a false kill switch
+        on the next normal run. Real rises count one run later. Call once per run.
+        """
+        prev = self._get("last_value_base", None)
+        peak = self.peak()
+        if prev is not None:
+            peak = max(peak, min(value_base, float(prev)))
+        elif peak == 0.0:                       # brand-new journal: nothing to confirm against yet
+            peak = value_base
         self._set("peak_base", repr(peak))
+        self._set("last_value_base", repr(value_base))
         return peak
 
     # -- ledger -----------------------------------------------------------------
@@ -235,8 +248,11 @@ class Journal:
                                      (month,)).fetchone()[0])
 
     # -- the view the gate needs ----------------------------------------------
-    def portfolio_state(self, prices_base: dict[str, float]) -> PortfolioState:
-        """prices_base: instrument key -> current price in base currency (for every holding)."""
+    def portfolio_state(self, prices_base: dict[str, float], observe: bool = True) -> PortfolioState:
+        """prices_base: instrument key -> current price in base currency (for every holding).
+
+        observe=True: this is the run's valuation and feeds the confirmed peak (once per run).
+        observe=False: a re-valuation in the same run (e.g. after trading); peak untouched."""
         holdings = {}
         for key, qty in self.holdings_qty().items():
             if key not in prices_base:
@@ -245,5 +261,6 @@ class Journal:
         state = PortfolioState(cash_base=self.cash_base(), holdings=holdings,
                                peak_value_base=self.peak(), trades_this_month=self.orders_this_month(),
                                halted=self.is_halted())
-        state.peak_value_base = self.update_peak(state.value_base)
+        if observe:
+            state.peak_value_base = self.observe_value(state.value_base)
         return state

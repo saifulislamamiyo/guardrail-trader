@@ -209,7 +209,7 @@ def run_once(broker, market, j: Journal, cfg: RiskConfig, llm: LLMSetup, *, mode
             log(f"Dry run: {len(approved)} order(s) would be placed. Nothing sent.")
             return 0
         execute(approved, broker, j, fx, fill_timeout, log)
-        final = j.portfolio_state({k: prices_base[k] for k in j.holdings_qty()})
+        final = j.portfolio_state({k: prices_base[k] for k in j.holdings_qty()}, observe=False)
         j.finish_run(run_id, "ok", final, result.summary)
         log(f"Done. value {final.value_base:,.2f} cash {final.cash_base:,.2f}")
         return 0
