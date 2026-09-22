@@ -47,8 +47,37 @@ def test_monthly_order_limit_holds(tmp_path):
     for _ in range(10):
         bot.run(submits(order("CCC", 1)))
     out = bot.run(submits(order("CCC", 1)))
-    assert len(bot.broker.orders) == 10 and out.status == "ok"
-    assert "monthly trade limit" in " ".join(out.logs)
+    assert len(bot.broker.orders) == 10
+
+
+def test_order_limit_used_up_means_no_model_call(tmp_path):
+    """Invariant: once the monthly order limit is used, Claude isn't called (no cost for nothing)."""
+    bot = Bot(tmp_path)
+    for _ in range(10):
+        bot.run(submits(order("CCC", 1)))
+    out = bot.run(submits(order("CCC", 1)))
+    assert out.status == "order_limit_reached" and out.llm_calls == 0 and len(bot.broker.orders) == 10
+
+
+def test_batch_that_crosses_the_limit_is_cut_at_the_limit(tmp_path):
+    """Invariant: with 9 used, a 3-order batch sends only 1."""
+    bot = Bot(tmp_path)
+    for _ in range(9):
+        bot.run(submits(order("CCC", 1)))
+    out = bot.run(submits(order("CCC", 1), order("BBB", 1), order("AAA", 1)))
+    assert out.llm_calls > 0 and len(bot.broker.orders) == 10
+
+
+def test_kill_switch_still_liquidates_with_the_order_limit_used_up(tmp_path):
+    """Invariant: the monthly order limit never blocks an emergency exit."""
+    bot = Bot(tmp_path, holdings=HELD)
+    bot.run()                                            # establishes the peak (and the last value)
+    bot.run()                                            # confirms it
+    for _ in range(10):
+        bot.run(submits(order("CCC", 1)))
+    assert bot.j.orders_this_month() == 10
+    out = bot.run(market=SimMarket({**CRASH, "CCC:USD": 20.0}))
+    assert out.status == "kill_switch" and bot.j.holdings_qty() == {} and bot.reconciled()
 
 
 def test_model_that_never_submits_trades_nothing(tmp_path):

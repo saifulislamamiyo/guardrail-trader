@@ -163,6 +163,15 @@ def run_once(broker, market, j: Journal, cfg: RiskConfig, llm: LLMSetup, *, mode
             log("US market closed (or <15 min left). Skipping (no Claude call, no cost).")
             return 0
 
+        # Monthly order limit used up: every order Claude proposed would be blocked, so don't pay
+        # for the call. The kill switch above is unaffected (liquidation bypasses this limit).
+        if state.trades_this_month >= cfg.max_trades_per_month:
+            j.finish_run(run_id, "order_limit_reached", state,
+                         f"{state.trades_this_month}/{cfg.max_trades_per_month} orders used this month")
+            log(f"Monthly order limit reached ({state.trades_this_month}/{cfg.max_trades_per_month}). "
+                "Skipping (no Claude call, no cost).")
+            return 0
+
         # 4. Claude
         run_budget = llm.run_budget_usd
         if llm.cost_fn is not None:

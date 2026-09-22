@@ -318,7 +318,7 @@ function renderDecisions(d) {
 }
 
 function renderRuns(d) {
-  const statusKind = s => ["ok", "dry_run", "market_closed", "halted"].includes(s) ? "ok" : ["error", "reconcile_failed", "kill_switch"].includes(s) ? "bad" : "warn";
+  const statusKind = s => ["ok", "dry_run", "market_closed", "halted", "order_limit_reached"].includes(s) ? "ok" : ["error", "reconcile_failed", "kill_switch"].includes(s) ? "bad" : "warn";
   table($("#runs"), [
     {h: "#", f: r => r.id},
     {h: "Started", f: r => when(r.started_at)},
