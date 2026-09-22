@@ -19,7 +19,7 @@ decides whether any of them may reach the broker.
 Twice per US trading day (shortly after the open and before the close), a scheduler starts one run:
 
 ```mermaid
-flowchart LR
+flowchart TD
     S[Scheduler<br/>launchd or supercronic] --> R[run_bot.py]
     R --> REC{Reconcile<br/>journal vs IBKR}
     REC -- mismatch --> STOP1[Stop: needs a human]
