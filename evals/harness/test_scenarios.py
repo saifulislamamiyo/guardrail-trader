@@ -244,6 +244,35 @@ def test_all_cash_portfolio_does_not_trade_on_a_dead_gateway(tmp_path):
     assert out.status == "broker_not_ready" and out.llm_calls == 0 and bot.broker.orders == {}
 
 
+def test_no_market_data_is_its_own_retryable_status(tmp_path):
+    """Invariant: a gateway serving no prices stops the run before Claude, and says why.
+
+    Seen live 24 Sep 2026: after a network outage the gateway came back as a secondary session,
+    kept account data but lost its market-data line (IBKR 10197), and six runs died with a
+    ValueError stack trace instead of an actionable status.
+    """
+    from guardrail_trader.broker import MarketDataUnavailableError
+
+    class DeadFeed(SimMarket):
+        def fx_rates(self):
+            raise MarketDataUnavailableError("simulated: no FX rate (IBKR 10197)")
+
+    bot = Bot(tmp_path, holdings=HELD)
+    out = bot.run(submits(order("CCC", 1)), DeadFeed())
+    assert out.rc == 2 and out.status == "market_data_unavailable"
+    assert out.llm_calls == 0 and bot.broker.orders == {}
+
+
+def test_empty_price_list_is_treated_as_no_market_data(tmp_path):
+    class NoPrices(SimMarket):
+        def price_all(self):
+            return {}
+
+    bot = Bot(tmp_path)
+    out = bot.run(submits(order("CCC", 1)), NoPrices())
+    assert out.rc == 2 and out.status == "market_data_unavailable" and out.llm_calls == 0
+
+
 def test_manual_trade_in_the_account_stops_the_bot(tmp_path):
     bot = Bot(tmp_path)
     bot.broker.holdings["AAA:USD"] = 1                  # someone traded by hand

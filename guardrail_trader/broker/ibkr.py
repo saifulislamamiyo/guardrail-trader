@@ -22,6 +22,11 @@ from guardrail_trader.config import LIVE_PORTS, MARKET_DATA_TYPES, PAPER_PORTS, 
 UNSET_DOUBLE = 1.7976931348623157e308  # IBKR's "no value" sentinel
 
 
+class MarketDataUnavailableError(ValueError):
+    """The gateway serves account data but no prices - e.g. IBKR error 10197 (the session lost
+    its market-data line to a competing session). Transient: restarting the gateway fixes it."""
+
+
 class BrokerNotReadyError(RuntimeError):
     """Connected to IB Gateway, but it isn't serving account data (yet). Transient: retry."""
 
@@ -228,7 +233,9 @@ class IBKRBroker:
             q = self.quote(contract)
             if not math.isnan(q.price) and q.price > 0:
                 return 1 / q.price if invert else q.price
-        raise ValueError(f"No FX rate available for {currency}->{base}")
+        raise MarketDataUnavailableError(
+            f"No FX rate available for {currency}->{base}: the gateway is connected but serving no "
+            f"market data (IBKR error 10197 = the session lost its data line; restart the gateway).")
 
     def fx_contract(self, pair: str) -> Contract:
         from ib_async import Forex

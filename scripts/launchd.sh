@@ -16,7 +16,7 @@ AWAKE_START="${KEEP_AWAKE_START:-18:00}"
 AWAKE_HOUR=$((10#${AWAKE_START%%:*})); AWAKE_MIN=$((10#${AWAKE_START##*:}))
 [[ "${1:-}" == "render" ]] && LA="$(mktemp -d)"   # render: write to a temp dir, print, install nothing
 DOMAIN="gui/$(id -u)"
-LABELS=(com.guardrail-trader.scheduler com.guardrail-trader.awake com.guardrail-trader.dashboard)
+LABELS=(com.guardrail-trader.scheduler com.guardrail-trader.awake com.guardrail-trader.dashboard com.guardrail-trader.gateway-watchdog)
 mkdir -p "$LA" "$ROOT/logs"
 
 plist() {  # label, keepalive(true/false), interval(0=none), args...
@@ -82,17 +82,22 @@ case "${1:-status}" in
     echo "installed: $LABELS"
     ;;
   docker-mode)
-    # Docker runs the scheduler + dashboard; keep only the host keep-awake job
+    # Docker runs the scheduler + dashboard; the host keeps keep-awake and the gateway watchdog
+    # (Docker control stays on the host: the bot container never gets the Docker socket).
     # (containers can't stop the Mac sleeping).
     for l in com.guardrail-trader.scheduler com.guardrail-trader.dashboard; do
       launchctl bootout "$DOMAIN/$l" 2>/dev/null || true; rm -f "$LA/$l.plist"
     done
     awake_plist
-    launchctl bootout "$DOMAIN/com.guardrail-trader.awake" 2>/dev/null || true
-    launchctl bootstrap "$DOMAIN" "$LA/com.guardrail-trader.awake.plist"
-    echo "docker-mode: only com.guardrail-trader.awake is loaded"
+    plist com.guardrail-trader.gateway-watchdog false 300 "$PY" "$ROOT/scripts/gateway_watchdog.py"
+    for l in com.guardrail-trader.awake com.guardrail-trader.gateway-watchdog; do
+      launchctl bootout "$DOMAIN/$l" 2>/dev/null || true
+      launchctl bootstrap "$DOMAIN" "$LA/$l.plist"
+    done
+    echo "docker-mode: com.guardrail-trader.awake + com.guardrail-trader.gateway-watchdog loaded"
     ;;
   render)
+    plist com.guardrail-trader.gateway-watchdog false 300 "$PY" "$ROOT/scripts/gateway_watchdog.py"
     plist com.guardrail-trader.scheduler false 900 "$PY" "$ROOT/scripts/scheduled_run.py"
     plist com.guardrail-trader.dashboard true 0 "$PY" "$ROOT/scripts/dashboard.py" --no-browser
     awake_plist

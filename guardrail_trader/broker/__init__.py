@@ -2,6 +2,7 @@ from guardrail_trader.broker.ibkr import (  # noqa: F401
     AccountSnapshot,
     BrokerNotReadyError,
     BrokerSafetyError,
+    MarketDataUnavailableError,
     IBKRBroker,
     OrderResult,
     Position,

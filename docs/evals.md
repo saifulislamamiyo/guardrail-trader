@@ -31,6 +31,8 @@ the model does. The simulator is in [`evals/sim.py`](https://github.com/saifulis
 | Market | Real rise, then a real crash | Peak rises one run late; kill switch still fires |
 | Market | One-off bad tick far **below** the price | **Known gap** (`xfail`): see below |
 | Broker | Disconnect before trading | Error, no orders |
+| Broker | Connected but serving no prices (IBKR 10197) | `market_data_unavailable`, retryable, no model call |
+| Broker | Prices come back empty for every instrument | Same: treated as no market data, not as "nothing to trade" |
 | Broker | Connected but serving no data (nightly re-login) | `broker_not_ready`, retryable, no model call — never read as an emptied account |
 | Broker | Same, with an all-cash journal | Still stops: empty positions must not "match" an empty journal |
 | Broker | Disconnect mid-execution | Next run stops on reconciliation |
