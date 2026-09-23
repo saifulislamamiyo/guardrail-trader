@@ -13,6 +13,7 @@ The same Python package runs in both modes. Only the **host** of each component 
 | Risk gate | Pure functions that approve or block each proposal | [`guardrail_trader/risk/gate.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/guardrail_trader/risk/gate.py) |
 | Journal | SQLite: ledger, runs, proposals, orders, snapshots, LLM usage | [`guardrail_trader/journal.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/guardrail_trader/journal.py) |
 | Dashboard | Read-only web page over the journal | [`scripts/dashboard.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/scripts/dashboard.py) |
+| Gateway watchdog | Restarts IB Gateway when runs keep failing for gateway reasons (host, Docker mode) | [`scripts/gateway_watchdog.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/scripts/gateway_watchdog.py) |
 | Keep-awake | Stops the Mac idle-sleeping on trading nights | [`scripts/keep_awake.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/scripts/keep_awake.py) |
 
 ## Native mode

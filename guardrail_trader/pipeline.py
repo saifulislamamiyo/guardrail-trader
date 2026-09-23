@@ -3,8 +3,8 @@
 A plain function with its dependencies passed in (broker, market data, journal, LLM, clock), so
 the CLI (scripts/run_bot.py) and the scenario evals (evals/) drive exactly the same code.
 
-Return codes: 0 ok/skipped, 1 error, 2 broker not ready (transient - retry), 3 reconciliation
-failed (needs a human).
+Return codes: 0 ok/skipped, 1 error, 2 gateway unusable (not ready / no market data - retry),
+3 reconciliation failed (needs a human).
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from guardrail_trader.agent import TradingAgent
-from guardrail_trader.broker import BrokerNotReadyError
+from guardrail_trader.broker import BrokerNotReadyError, MarketDataUnavailableError
 from guardrail_trader.config import PROJECT_ROOT
 from guardrail_trader.executor import execute
 from guardrail_trader.journal import Journal
@@ -125,9 +125,16 @@ def run_once(broker, market, j: Journal, cfg: RiskConfig, llm: LLMSetup, *, mode
             return 3
 
         # 2. Prices + FX
-        fx = market.fx_rates()
-        log(f"fx {fx}; pricing {len(cfg.universe)} instruments...")
-        prices = market.price_all()
+        try:
+            fx = market.fx_rates()
+            log(f"fx {fx}; pricing {len(cfg.universe)} instruments...")
+            prices = market.price_all()
+            if not prices:
+                raise MarketDataUnavailableError("no prices returned for any instrument")
+        except MarketDataUnavailableError as e:
+            j.finish_run(run_id, "market_data_unavailable", notes=str(e))
+            log(f"MARKET DATA UNAVAILABLE: {e} Skipping; no Claude call, no orders.")
+            return 2
         market.prices, market.fx = prices, fx
         missing = [k for k in mine if k not in prices]
         if missing:

@@ -65,6 +65,28 @@ In Docker: `docker compose logs -f bot` and `docker compose logs -f ib-gateway`.
 
 In Docker, prefix with `docker compose exec bot python` instead of `.venv/bin/python`.
 
+## Gateway auto-recovery
+
+A network outage can leave IB Gateway *connected but useless*: it still serves account data while
+IBKR has taken its market-data line away (error 10197, "competing live session"). Every run then
+fails until someone restarts the container.
+
+| Piece | Behaviour |
+|---|---|
+| The run | names the failure: `broker_not_ready` (no account data) or `market_data_unavailable` (no prices). Both stop before Claude and exit 2, so the scheduler retries inside the slot |
+| [`scripts/gateway_watchdog.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/scripts/gateway_watchdog.py) | every 5 min (launchd): if the **last 2 real runs** both failed for gateway reasons, `docker compose restart ib-gateway` |
+| Guards | never while a run holds the scheduler lock · 30 min cooldown · at most 4 restarts a day, then it stops and leaves it to you |
+| Where it runs | on the **host**, not in a container: the bot never gets the Docker socket, which is root-equivalent access to the Mac |
+| Logs | `logs/gateway_watchdog.log`; state in `data/gateway_watchdog_state.json` |
+
+```bash
+scripts/gateway_watchdog.py --dry-run     # decide and log, restart nothing
+tail -f logs/gateway_watchdog.log
+```
+
+Installed by `scripts/launchd.sh docker-mode` as `com.guardrail-trader.gateway-watchdog`.
+It only makes sense in Docker mode; in native mode you restart IB Gateway yourself.
+
 ## Dependencies and pinning
 
 | What | Pinned by | Updated by |
@@ -101,6 +123,15 @@ cloudflared tunnel --url http://127.0.0.1:8765 --http-host-header 127.0.0.1:8765
 ??? question "The container won't log in, or my native session got kicked"
     IBKR allows one session per username. Only one of the native app or the `ib-gateway` container
     may be logged in.
+
+??? question "A run logged *MARKET DATA UNAVAILABLE* (status `market_data_unavailable`)"
+    The gateway is connected and serves account data, but no prices: usually IBKR error 10197,
+    "No market data during competing live session". After a network outage the gateway can
+    re-login as a *secondary* session, which keeps account access but loses its market-data line.
+    Restarting the container fixes it, and the watchdog above does that automatically after two
+    consecutive failures. To check by hand:
+    `docker compose exec bot python scripts/check_connection.py` - a price of `nan` with error
+    10197 is this case.
 
 ??? question "A run logged *BROKER NOT READY* (status `broker_not_ready`)"
     IB Gateway accepted the connection but served no data: the logs show `positions request timed

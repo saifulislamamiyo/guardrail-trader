@@ -5,7 +5,7 @@
   .venv/bin/python scripts/run_bot.py                           # paper trading (market must be open)
 
 The run itself is guardrail_trader.pipeline.run_once(); this file wires in IBKR and the LLM.
-Exit codes: 0 ok/skipped, 1 error, 2 broker not ready (transient), 3 reconciliation failed.
+Exit codes: 0 ok/skipped, 1 error, 2 gateway unusable (transient), 3 reconciliation failed.
 """
 from __future__ import annotations
 
