@@ -248,6 +248,21 @@ class Journal:
                                      (month,)).fetchone()[0])
 
     # -- the view the gate needs ----------------------------------------------
+    def avg_costs(self) -> dict[str, float]:
+        """Average cost per share in base currency (incl. commission) for open positions."""
+        pos: dict[str, list[float]] = {}  # key -> [qty, cost_base]
+        for kind, sym, ccy, qty, amt in self.db.execute(
+                "SELECT kind, symbol, currency, quantity, amount_base FROM ledger "
+                "WHERE kind IN ('BUY','SELL') ORDER BY id").fetchall():
+            k = f"{sym}:{ccy}"
+            q, c = pos.setdefault(k, [0.0, 0.0])
+            if kind == "BUY":
+                pos[k] = [q + qty, c - amt]
+            elif q > 0:
+                sold = min(qty, q)
+                pos[k] = [q - sold, c * (q - sold) / q]
+        return {k: c / q for k, (q, c) in pos.items() if q > 1e-9}
+
     def portfolio_state(self, prices_base: dict[str, float], observe: bool = True) -> PortfolioState:
         """prices_base: instrument key -> current price in base currency (for every holding).
 

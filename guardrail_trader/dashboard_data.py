@@ -17,18 +17,7 @@ def _rows(j: Journal, sql: str, args=()) -> list[dict]:
 
 
 def _avg_costs(j: Journal) -> dict[str, float]:
-    """Average cost per share in base currency (incl. commission) for open positions."""
-    pos: dict[str, list[float]] = {}  # key -> [qty, cost_base]
-    for r in _rows(j, "SELECT kind, symbol, currency, quantity, amount_base FROM ledger "
-                      "WHERE kind IN ('BUY','SELL') ORDER BY id"):
-        k = f"{r['symbol']}:{r['currency']}"
-        q, c = pos.setdefault(k, [0.0, 0.0])
-        if r["kind"] == "BUY":
-            pos[k] = [q + r["quantity"], c - r["amount_base"]]
-        elif q > 0:
-            sold = min(r["quantity"], q)
-            pos[k] = [q - sold, c * (q - sold) / q]
-    return {k: c / q for k, (q, c) in pos.items() if q > 1e-9}
+    return j.avg_costs()
 
 
 def build(j: Journal, cfg: RiskConfig) -> dict:

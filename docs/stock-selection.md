@@ -18,7 +18,7 @@ flowchart TD
 
 | Tool | Gives Claude | Limit | Code |
 |---|---|---|---|
-| `get_portfolio` | cash, holdings and weights, drawdown, orders used, max value per holding, `recent_activity` (last 10 orders and outcomes) | — | [`agent.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/guardrail_trader/agent.py) → `_portfolio()` |
+| `get_portfolio` | cash, holdings with weights, average cost and unrealized P/L, drawdown, orders used, max value per holding, `recent_activity` (last 10 orders and outcomes) | — | [`agent.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/guardrail_trader/agent.py) → `_portfolio()` |
 | `list_universe` | symbol, currency, price (local and AUD), `my_pick` flag. **No company names or sectors.** | filters: affordable, my picks, symbols | → `_universe()` |
 | `get_price_history` | 6-month summary: returns (1w/1m/3m/6m), SMA20/50, 6m high/low, drawdown from high, annualised volatility, last 10 closes | 15 calls per run | [`market.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/guardrail_trader/market.py) → `summarize_history()` |
 | `check_orders` | the gate's verdict and reasons for proposed orders | 5 calls per run | → `_check()` |

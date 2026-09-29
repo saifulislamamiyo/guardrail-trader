@@ -40,6 +40,11 @@ Things to weigh:
 - Each US order costs roughly US$1 commission; frequent trading erodes returns. Prefer fewer, deliberate trades.
 - Prices you see may be delayed ~15 minutes.
 - Diversify: a concentrated portfolio can hit the kill switch.
+- Selling is a normal decision, not a failure. Each holding shows avg_cost and unrealized P/L. Consider a SELL when
+  the reason you bought no longer holds (trend reversed, news changed), a holding is near the position cap, or a
+  clearly better candidate needs the cash. Weigh the round trip (a sell plus a buy is 2 of the monthly orders,
+  plus commission) against the expected gain. A gain alone is not a reason to sell, and a loss alone is not a
+  reason to hold.
 - Holdings the owner specifically picked are marked my_pick=true; treat them as candidates, not obligations.
 - get_portfolio includes recent_activity: your last orders and what happened (blocked, filled, not filled).
   Don't repeat an order that was just blocked or didn't fill without a reason; unfilled orders still used up the monthly limit.
@@ -123,6 +128,7 @@ class TradingAgent:
                  log: Callable[[str], None] = print, model: str = "claude-sonnet-5",
                  cost_fn: Callable = _free, run_budget_usd: float = 0.50,
                  on_usage: Callable | None = None, recent_activity: list[dict] | None = None,
+                 avg_costs: dict[str, float] | None = None,
                  max_seconds: float = MAX_SECONDS, request_timeout_s: float = 60.0,
                  clock: Callable[[], float] = time.monotonic):
         self.client, self.cfg, self.state, self.market = client, cfg, state, market
@@ -134,6 +140,7 @@ class TradingAgent:
         self.check_calls = 0
         self.submit_revisions = 0
         self.recent = recent_activity or []
+        self.avg_costs = avg_costs or {}
         self.max_seconds, self.request_timeout_s, self.clock = max_seconds, request_timeout_s, clock
         self.max_pos_base = state.value_base * cfg.max_position_pct / 100
 
@@ -224,13 +231,24 @@ class TradingAgent:
             "peak_value": round(s.peak_value_base, 2), "drawdown_pct": round(s.drawdown_pct, 2),
             "orders_used_this_month": s.trades_this_month, "orders_limit_per_month": self.cfg.max_trades_per_month,
             "max_value_per_holding": round(self.max_pos_base, 2),
-            "holdings": [{"symbol": k.split(":")[0], "currency": k.split(":")[1], "quantity": h.quantity,
-                          "price": round(self.market.prices.get(k, float("nan")), 2),
-                          "value": round(h.quantity * h.price_base, 2),
-                          "weight_pct": round(h.quantity * h.price_base / v * 100, 2) if v else 0}
-                         for k, h in s.holdings.items()],
+            "holdings": [self._holding_row(k, h, v) for k, h in s.holdings.items()],
             "recent_activity": self.recent,
         })
+
+    def _holding_row(self, key: str, h, total: float) -> dict:
+        """One holding as Claude sees it. avg_cost/P&L are in base currency, from the journal's ledger
+        (commission included), so a sell decision can weigh what the position has actually earned."""
+        value = h.quantity * h.price_base
+        row = {"symbol": key.split(":")[0], "currency": key.split(":")[1], "quantity": h.quantity,
+               "price": round(self.market.prices.get(key, float("nan")), 2),
+               "value": round(value, 2),
+               "weight_pct": round(value / total * 100, 2) if total else 0}
+        cost = self.avg_costs.get(key)
+        if cost:
+            row["avg_cost"] = round(cost, 2)
+            row["unrealized_pnl"] = round((h.price_base - cost) * h.quantity, 2)
+            row["unrealized_pnl_pct"] = round((h.price_base / cost - 1) * 100, 2)
+        return row
 
     def _universe(self, a) -> str:
         only_aff = a.get("only_affordable", True)

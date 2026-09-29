@@ -23,6 +23,7 @@ the model does. The simulator is in [`evals/sim.py`](https://github.com/saifulis
 | Model | One turn over the per-run cost / zero time budget | Stops, no trades |
 | Budget | Monthly LLM cap used up; monthly order limit used up; market closed | Claude is not called |
 | Budget | Order limit used up, then a flash crash | Kill switch still sells everything |
+| Model | Sells a −10% holding to fund a better one | The sell passes the gate, fills and reconciles; cost basis and P/L were in what Claude saw |
 | Market | Flash crash (−60%) while open | Kill switch sells everything and halts; Claude not consulted |
 | Market | Flash crash while **closed** | Holdings sold at the next open-market run |
 | Market | Missing price for a holding | Refuses to value; no decisions |
