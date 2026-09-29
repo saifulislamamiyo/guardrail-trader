@@ -83,3 +83,31 @@ def test_existing_journal_without_last_value_does_not_raise_peak_on_first_run(j)
     j._set("peak_base", "100.0")                            # journal from before this change
     j.record_fill("BBB", "AUD", "BUY", 4, 5.0, commission=0.5, fx_to_base=1.0)
     assert j.portfolio_state({"BBB:AUD": 50.0}).peak_value_base == pytest.approx(100.0)
+
+
+def _run_started(j, minutes_ago):
+    from datetime import datetime, timedelta
+
+    from guardrail_trader.journal import TZ
+    rid = j.start_run("paper")
+    ts = (datetime.now(TZ) - timedelta(minutes=minutes_ago)).isoformat(timespec="seconds")
+    with j.db:
+        j.db.execute("UPDATE runs SET started_at=? WHERE id=?", (ts, rid))
+    return rid
+
+
+def test_abort_stale_runs_closes_only_old_running_rows(j):
+    old = _run_started(j, 120)          # died mid-run two hours ago
+    fresh = _run_started(j, 2)          # legitimately running right now
+    done = _run_started(j, 300)
+    j.finish_run(done, "ok")            # old but finished: must be left alone
+    assert j.abort_stale_runs() == [old]
+    st = {r[0]: r[1] for r in j.db.execute("SELECT id, status FROM runs")}
+    assert st == {old: "aborted", fresh: "running", done: "ok"}
+    assert j.db.execute("SELECT finished_at FROM runs WHERE id=?", (old,)).fetchone()[0] is not None
+
+
+def test_abort_stale_runs_is_idempotent(j):
+    _run_started(j, 120)
+    assert len(j.abort_stale_runs()) == 1
+    assert j.abort_stale_runs() == []

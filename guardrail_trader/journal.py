@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -59,6 +59,9 @@ CREATE TABLE IF NOT EXISTS llm_usage (
   web_searches INTEGER, cost_usd REAL NOT NULL
 );
 """
+
+
+STALE_RUN_MINUTES = 30  # well past AGENT_MAX_SECONDS + the fill wait
 
 
 def _now() -> str:
@@ -162,6 +165,24 @@ class Journal:
     def start_run(self, mode: str) -> int:
         with self.db:
             return self.db.execute("INSERT INTO runs(started_at,mode) VALUES(?,?)", (_now(), mode)).lastrowid
+
+    def abort_stale_runs(self, older_than_min: int = STALE_RUN_MINUTES) -> list[int]:
+        """Close runs left as 'running' by a process that died mid-run (container restart, OOM, power loss).
+
+        A run is bounded by the agent and fill timeouts, so one still 'running' well past that is not
+        running. Left alone it shows as in progress on the dashboard forever. Orders it may have sent are
+        not lost: the next run reconciles the broker against the journal before it does anything else.
+        """
+        cutoff = datetime.now(TZ) - timedelta(minutes=older_than_min)
+        rows = self.db.execute("SELECT id, started_at FROM runs WHERE status='running'").fetchall()
+        stale = [r[0] for r in rows if datetime.fromisoformat(r[1]) < cutoff]
+        with self.db:
+            for run_id in stale:
+                self.db.execute(
+                    "UPDATE runs SET finished_at=?, status='aborted', notes=? WHERE id=? AND status='running'",
+                    (_now(), f"Process died mid-run (no finish after {older_than_min} min); closed by the next run.",
+                     run_id))
+        return stale
 
     def finish_run(self, run_id: int, status: str, state: PortfolioState | None = None, notes: str = "") -> None:
         with self.db:
