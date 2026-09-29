@@ -93,3 +93,31 @@ def test_avg_costs_include_commission_and_shrink_with_partial_sells(j):
     assert j.avg_costs() == {"AAA:USD": pytest.approx((31.5 + 61.5) / 4)}          # average unchanged by a sell
     j.record_fill("AAA", "USD", "SELL", 3, 30.0, commission=1.0, fx_to_base=1.5)
     assert j.avg_costs() == {}                                                     # closed position drops out
+
+
+def _run_started(j, minutes_ago):
+    from datetime import datetime, timedelta
+
+    from guardrail_trader.journal import TZ
+    rid = j.start_run("paper")
+    ts = (datetime.now(TZ) - timedelta(minutes=minutes_ago)).isoformat(timespec="seconds")
+    with j.db:
+        j.db.execute("UPDATE runs SET started_at=? WHERE id=?", (ts, rid))
+    return rid
+
+
+def test_abort_stale_runs_closes_only_old_running_rows(j):
+    old = _run_started(j, 120)          # died mid-run two hours ago
+    fresh = _run_started(j, 2)          # legitimately running right now
+    done = _run_started(j, 300)
+    j.finish_run(done, "ok")            # old but finished: must be left alone
+    assert j.abort_stale_runs() == [old]
+    st = {r[0]: r[1] for r in j.db.execute("SELECT id, status FROM runs")}
+    assert st == {old: "aborted", fresh: "running", done: "ok"}
+    assert j.db.execute("SELECT finished_at FROM runs WHERE id=?", (old,)).fetchone()[0] is not None
+
+
+def test_abort_stale_runs_is_idempotent(j):
+    _run_started(j, 120)
+    assert len(j.abort_stale_runs()) == 1
+    assert j.abort_stale_runs() == []

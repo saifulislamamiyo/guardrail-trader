@@ -93,6 +93,24 @@ def test_model_can_sell_a_broken_holding_to_fund_a_better_one(tmp_path):
     assert "unrealized_pnl" in transcript and "avg_cost" in transcript
 
 
+def test_run_orphaned_by_a_dead_process_is_closed_by_the_next_run(tmp_path):
+    """Invariant: a run killed mid-flight (container restart) never stays 'running' forever, and the
+    next run still reconciles and proceeds normally."""
+    from datetime import datetime, timedelta
+
+    from guardrail_trader.journal import TZ
+    bot = Bot(tmp_path, holdings=HELD)
+    orphan = bot.j.start_run("paper")                       # the process died before finish_run
+    with bot.j.db:
+        bot.j.db.execute("UPDATE runs SET started_at=? WHERE id=?",
+                         ((datetime.now(TZ) - timedelta(hours=3)).isoformat(timespec="seconds"), orphan))
+    out = bot.run()
+    assert out.status == "ok" and bot.reconciled()
+    status = bot.j.db.execute("SELECT status FROM runs WHERE id=?", (orphan,)).fetchone()[0]
+    assert status == "aborted"
+    assert not bot.j.db.execute("SELECT 1 FROM runs WHERE status='running'").fetchall()
+
+
 def test_model_that_never_submits_trades_nothing(tmp_path):
     """Invariant: a model looping on tools forever stops at MAX_TURNS with no trades."""
     bot = Bot(tmp_path)
