@@ -98,6 +98,8 @@ def run_once(broker, market, j: Journal, cfg: RiskConfig, llm: LLMSetup, *, mode
              fill_timeout: float = 120.0, my_picks: set[str] | None = None, web_search: bool = False,
              log: Callable[[str], None] = print, now: datetime | None = None,
              runs_dir: Path = RUNS_DIR) -> int:
+    for stale_id in j.abort_stale_runs():
+        log(f"run {stale_id} was left 'running' by a process that died; marked aborted")
     run_id = j.start_run(mode)
     log(f"run {run_id} mode={mode} universe={len(cfg.universe)} budget={cfg.capital:g} {cfg.base_currency}")
     try:
