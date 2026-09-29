@@ -4,7 +4,7 @@ from types import SimpleNamespace as NS
 
 from guardrail_trader.agent import MAX_HISTORY_CALLS, TradingAgent
 from guardrail_trader.fake_llm import FakeClaude
-from guardrail_trader.risk import Instrument, PortfolioState, RiskConfig
+from guardrail_trader.risk import Holding, Instrument, PortfolioState, RiskConfig
 
 UNI = {i.key: i for i in [Instrument("CSCO", "SMART", "USD"), Instrument("META", "SMART", "USD")]}
 CFG = RiskConfig(5000.0, "AUD", 25.0, 10, 25.0, 2.0, 10.0, False, UNI)
@@ -78,3 +78,14 @@ def test_claude_ending_without_submit_means_no_trades():
 
     res = agent(Quitter()).run()
     assert not res.submitted and res.proposals == []
+
+
+def test_get_portfolio_shows_cost_basis_and_unrealized_pnl():
+    state = PortfolioState(1000.0, {"CSCO:USD": Holding(4, 154.0), "META:USD": Holding(1, 900.0)}, peak_value_base=5000.0)
+    a = TradingAgent(FakeClaude(), CFG, state, StubMarket(), set(), log=lambda *_: None,
+                     avg_costs={"CSCO:USD": 140.0})
+    rows = {h["symbol"]: h for h in json.loads(a._portfolio({}))["holdings"]}
+    assert rows["CSCO"]["avg_cost"] == 140.0
+    assert rows["CSCO"]["unrealized_pnl"] == 56.0          # (154 - 140) * 4
+    assert rows["CSCO"]["unrealized_pnl_pct"] == 10.0
+    assert "avg_cost" not in rows["META"]                   # no ledger cost known: omit, never invent

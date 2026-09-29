@@ -80,6 +80,19 @@ def test_kill_switch_still_liquidates_with_the_order_limit_used_up(tmp_path):
     assert out.status == "kill_switch" and bot.j.holdings_qty() == {} and bot.reconciled()
 
 
+def test_model_can_sell_a_broken_holding_to_fund_a_better_one(tmp_path):
+    """Invariant: a model-initiated SELL (no kill switch involved) passes the gate, fills, reconciles,
+    frees the cash for the buy in the same submit, and Claude sees cost basis and P/L when deciding."""
+    bot = Bot(tmp_path, holdings=HELD)
+    market = SimMarket({**PRICES, "BBB:USD": 45.0})                      # BBB -10% vs its A$ cost of 50
+    out = bot.run(submits(order("BBB", 20, "SELL", px=45.0), order("CCC", 30, "BUY")), market)
+    assert out.status == "ok" and bot.reconciled()
+    assert bot.j.holdings_qty() == {"AAA:USD": 8, "CCC:USD": 30}
+    assert bot.j.orders_this_month() == 2
+    transcript = (tmp_path / "runs" / f"run_{bot.j.db.execute('SELECT MAX(id) FROM runs').fetchone()[0]}.json").read_text()
+    assert "unrealized_pnl" in transcript and "avg_cost" in transcript
+
+
 def test_run_orphaned_by_a_dead_process_is_closed_by_the_next_run(tmp_path):
     """Invariant: a run killed mid-flight (container restart) never stays 'running' forever, and the
     next run still reconciles and proceeds normally."""

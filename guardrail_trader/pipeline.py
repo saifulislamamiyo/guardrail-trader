@@ -207,7 +207,7 @@ def run_once(broker, market, j: Journal, cfg: RiskConfig, llm: LLMSetup, *, mode
             log(f"LLM {llm.provider}/{llm.model}; spent this month US${spent:.2f} of US${cap:.2f}")
         client = llm.make_client(market)
         agent = TradingAgent(
-            client, cfg, state, market, my_picks, recent_activity=j.recent_activity(10),
+            client, cfg, state, market, my_picks, recent_activity=j.recent_activity(10), avg_costs=j.avg_costs(),
             request_timeout_s=llm.request_timeout_s,
             **({} if llm.max_seconds is None else dict(max_seconds=llm.max_seconds)),
             web_search=web_search, log=log, model=llm.model,

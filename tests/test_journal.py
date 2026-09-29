@@ -85,6 +85,16 @@ def test_existing_journal_without_last_value_does_not_raise_peak_on_first_run(j)
     assert j.portfolio_state({"BBB:AUD": 50.0}).peak_value_base == pytest.approx(100.0)
 
 
+def test_avg_costs_include_commission_and_shrink_with_partial_sells(j):
+    j.record_fill("AAA", "USD", "BUY", 2, 10.0, commission=1.0, fx_to_base=1.5)    # cost (20+1)*1.5 = 31.5 for 2
+    j.record_fill("AAA", "USD", "BUY", 2, 20.0, commission=1.0, fx_to_base=1.5)    # cost (40+1)*1.5 = 61.5 for 2
+    assert j.avg_costs() == {"AAA:USD": pytest.approx((31.5 + 61.5) / 4)}
+    j.record_fill("AAA", "USD", "SELL", 1, 30.0, commission=1.0, fx_to_base=1.5)
+    assert j.avg_costs() == {"AAA:USD": pytest.approx((31.5 + 61.5) / 4)}          # average unchanged by a sell
+    j.record_fill("AAA", "USD", "SELL", 3, 30.0, commission=1.0, fx_to_base=1.5)
+    assert j.avg_costs() == {}                                                     # closed position drops out
+
+
 def _run_started(j, minutes_ago):
     from datetime import datetime, timedelta
 
