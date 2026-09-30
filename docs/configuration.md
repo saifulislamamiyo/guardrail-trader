@@ -17,7 +17,7 @@ In Docker, `config/` is bind-mounted read-only, so edits on the host apply witho
 
 ```toml
 [budget]
-capital = 5000.0       # virtual budget the bot may use
+capital = 10000.0      # total virtual budget the bot may use
 currency = "AUD"       # base currency for all accounting
 
 [limits]
@@ -31,6 +31,12 @@ allow_fractional = false        # IBKR rejects fractional orders via the API
 
 - The budget is deposited into the journal's ledger once, by `scripts/journal_cli.py init`, so set
   `capital` and `currency` **before** you run `init`.
+- To raise the budget later, raise `capital` and run `scripts/journal_cli.py topup` (a dry run that prints
+  the difference), then `topup --confirm` to deposit it. It deposits `capital` minus what is already
+  deposited, so running it twice deposits once. Deposits are append-only: lowering `capital` below the
+  total deposited is refused, there are no withdrawals. A top-up is not a drawdown (the peak only rises
+  after two consecutive runs at the higher value) and the per-holding cap, which is a percentage of
+  portfolio value, grows with it.
 - Values are validated on load. A missing or out-of-range value stops the run (fail-closed).
 - Tighter is always safe. To see which tickers fit your position limit at current prices, run
   `scripts/affordability.py`.

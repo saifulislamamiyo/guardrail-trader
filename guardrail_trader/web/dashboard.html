@@ -196,7 +196,7 @@ function renderKpis(d) {
   const ordPct = Math.min(100, k.orders_this_month / Math.max(1, k.orders_limit) * 100);
   const lr = k.last_run;
   const tiles = [
-    [`Portfolio value (${c})`, money(k.value), `started with ${money(k.capital, c, 0)}`],
+    [`Portfolio value (${c})`, money(k.value), `deposited ${money(k.capital, c, 0)}`],
     [`Profit / loss (${c})`, signed(k.pnl), signed(k.pnl_pct, "%")],
     [`Cash (${c})`, money(k.cash), `${k.value ? (k.cash / k.value * 100).toFixed(0) : 0}% of portfolio`],
     ["Drawdown from peak", k.drawdown_pct.toFixed(2) + "%", `kill switch at ${k.kill_switch_pct}% · peak ${money(k.peak, c, 0)}`, ddPct],
@@ -230,7 +230,10 @@ function renderChart(d) {
   if (pts.length < 1) { el.insertAdjacentHTML("afterbegin", `<div class="empty">No valued runs yet.</div>`); return; }
   const W = el.clientWidth || 700, H = 260, m = {l: 64, r: 16, t: 12, b: 28};
   const cap = d.kpis.capital;
-  const vals = pts.map(p => p.value).concat([cap]);
+  // Deposited capital over time: a step at each deposit (P/L is measured against this, not a fixed line).
+  const steps = []; let cum = 0;
+  (d.kpis.deposits || []).forEach(dp => { steps.push({t: new Date(dp.ts).getTime(), from: cum, to: cum += dp.amount}); });
+  const vals = pts.map(p => p.value).concat(steps.map(s => s.to), [cap]);
   let lo = Math.min(...vals), hi = Math.max(...vals);
   const pad = Math.max((hi - lo) * 0.15, cap * 0.01); lo -= pad; hi += pad;
   const t0 = pts[0].t, t1 = pts.length > 1 ? pts[pts.length - 1].t : t0 + 1;
@@ -242,13 +245,18 @@ function renderChart(d) {
     grid.push(`<line x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--border)" stroke-width="1"/>
       <text x="${m.l - 8}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="var(--text-3)">${Math.round(v).toLocaleString()}</text>`);
   }
+  const cx = t => x(Math.min(Math.max(t, t0), t1));
+  const capPath = steps.length ? steps.map((st, i) => i === 0
+      ? `M${m.l},${y(st.to).toFixed(1)}`
+      : `L${cx(st.t).toFixed(1)},${y(st.from).toFixed(1)}L${cx(st.t).toFixed(1)},${y(st.to).toFixed(1)}`).join("") +
+      `L${W - m.r},${y(cap).toFixed(1)}` : `M${m.l},${y(cap).toFixed(1)}L${W - m.r},${y(cap).toFixed(1)}`;
   const line = pts.map((p, i) => `${i ? "L" : "M"}${x(p.t).toFixed(1)},${y(p.value).toFixed(1)}`).join("");
   const area = `${line}L${x(pts[pts.length - 1].t).toFixed(1)},${H - m.b}L${x(pts[0].t).toFixed(1)},${H - m.b}Z`;
   const xl = [pts[0], pts[pts.length - 1]].filter((p, i, a) => i === 0 || p !== a[0]);
   const svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Portfolio value over time">
     ${grid.join("")}
-    <line x1="${m.l}" x2="${W - m.r}" y1="${y(cap)}" y2="${y(cap)}" stroke="var(--text-3)" stroke-dasharray="4 4" stroke-width="1"/>
-    <text x="${W - m.r}" y="${y(cap) - 6}" text-anchor="end" font-size="11" fill="var(--text-3)">starting capital</text>
+    <path d="${capPath}" fill="none" stroke="var(--text-3)" stroke-dasharray="4 4" stroke-width="1"/>
+    <text x="${W - m.r}" y="${y(cap) - 6}" text-anchor="end" font-size="11" fill="var(--text-3)">${steps.length > 1 ? "deposited" : "starting capital"}</text>
     ${pts.length > 1 ? `<path d="${area}" fill="var(--series-1-fill)"/>` : ""}
     <path d="${line}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linejoin="round"/>
     ${pts.map(p => `<circle cx="${x(p.t)}" cy="${y(p.value)}" r="${pts.length > 40 ? 0 : 4}" fill="var(--series-1)" stroke="var(--surface)" stroke-width="2"/>`).join("")}

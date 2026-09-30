@@ -60,6 +60,8 @@ In Docker: `docker compose logs -f bot` and `docker compose logs -f ib-gateway`.
 ```bash
 .venv/bin/python scripts/journal_cli.py status               # budget, holdings, orders, spend
 .venv/bin/python scripts/journal_cli.py init                 # deposit the budget (once)
+.venv/bin/python scripts/journal_cli.py topup                # dry run: how much `capital` in risk.toml would add
+.venv/bin/python scripts/journal_cli.py topup --confirm      # deposit that difference (idempotent)
 .venv/bin/python scripts/journal_cli.py reset-halt --confirm # clear the kill switch
 ```
 

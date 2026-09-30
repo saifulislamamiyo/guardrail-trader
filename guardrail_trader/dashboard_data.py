@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 from guardrail_trader import llm
@@ -22,10 +23,17 @@ def _avg_costs(j: Journal) -> dict[str, float]:
 
 def build(j: Journal, cfg: RiskConfig) -> dict:
     runs = _rows(j, "SELECT * FROM runs ORDER BY id")
+    deposits = j.deposits()
+    deposited = sum(a for _, a in deposits)
     valued = [r for r in runs if r["value_base"] is not None]
     last_valued = valued[-1] if valued else None
     cash = j.cash_base()
     value = last_valued["value_base"] if last_valued else cash
+    if last_valued:
+        # The last run's value predates any deposit made since, so add that cash now; otherwise a top-up
+        # reads as a loss until the next run. (Holdings can't change between runs: fills happen inside one.)
+        as_of = datetime.fromisoformat(last_valued["finished_at"] or last_valued["started_at"])
+        value += sum(a for ts, a in deposits if datetime.fromisoformat(ts) > as_of)
     holdings_now = j.holdings_qty()
     if not holdings_now:
         value = cash  # all cash: value is exact without prices
@@ -90,8 +98,11 @@ def build(j: Journal, cfg: RiskConfig) -> dict:
     return {
         "base_currency": cfg.base_currency,
         "kpis": {
-            "capital": cfg.capital, "value": value, "cash": cash, "peak": peak,
-            "pnl": value - cfg.capital, "pnl_pct": (value / cfg.capital - 1) * 100,
+            # P/L is against what was actually deposited (the ledger), not the config: a top-up moves
+            # the baseline from that day on instead of rewriting history.
+            "capital": deposited, "deposits": [{"ts": ts, "amount": a} for ts, a in deposits],
+            "value": value, "cash": cash, "peak": peak,
+            "pnl": value - deposited, "pnl_pct": (value / deposited - 1) * 100 if deposited else 0.0,
             "drawdown_pct": drawdown, "kill_switch_pct": cfg.max_drawdown_pct,
             "orders_this_month": j.orders_this_month(), "orders_limit": cfg.max_trades_per_month,
             "llm_month_usd": j.llm_spend_usd(), "llm_month_cap_usd": llm.monthly_budget_usd(),

@@ -21,6 +21,30 @@ def test_empty_journal_builds(j):
     assert d["kpis"]["value"] == 5000.0 and d["kpis"]["pnl"] == 0 and d["holdings"] == []
 
 
+def test_pnl_is_against_total_deposits_so_a_topup_is_not_profit(j):
+    j.topup_to(10000.0, "AUD")                               # second deposit of 5,000
+    d = dashboard_data.build(j, CFG)
+    k = d["kpis"]
+    assert k["capital"] == 10000.0 and k["value"] == 10000.0
+    assert k["pnl"] == 0 and k["pnl_pct"] == 0               # a deposit is not a gain
+    assert [dp["amount"] for dp in k["deposits"]] == [5000.0, 5000.0]
+
+
+def test_topup_after_the_last_run_counts_at_once_not_as_a_loss(j):
+    run = j.start_run("paper")
+    j.record_fill("CSCO", "USD", "BUY", 2, 110.0, commission=1.0, fx_to_base=1.4)         # cost 309.4
+    state = PortfolioState(j.cash_base(), {"CSCO:USD": Holding(2, 120 * 1.4)}, 5000.0)
+    j.finish_run(run, "ok", state, "bought CSCO")
+    before = dashboard_data.build(j, CFG)["kpis"]
+    j.topup_to(10000.0, "AUD")                               # no run has happened since
+    with j.db:                                               # timestamps are whole seconds: pin it after the run
+        j.db.execute("UPDATE ledger SET ts='2999-01-01T00:00:00+10:00' WHERE kind='DEPOSIT' AND amount_base=5000 "
+                     "AND id=(SELECT MAX(id) FROM ledger)")
+    after = dashboard_data.build(j, CFG)["kpis"]
+    assert after["value"] == pytest.approx(before["value"] + 5000.0)
+    assert after["pnl"] == pytest.approx(before["pnl"])      # a deposit moves value and baseline together
+
+
 def test_holdings_pnl_and_decisions(j):
     run = j.start_run("paper")
     p = Proposal("CSCO", "SMART", "USD", "BUY", 2, 110.0, reason="cheap vs SMA50")

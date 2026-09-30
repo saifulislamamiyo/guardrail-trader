@@ -111,6 +111,20 @@ def test_run_orphaned_by_a_dead_process_is_closed_by_the_next_run(tmp_path):
     assert not bot.j.db.execute("SELECT 1 FROM runs WHERE status='running'").fetchall()
 
 
+def test_budget_topup_mid_life_raises_the_cap_without_a_false_kill_switch(tmp_path):
+    """Invariant: depositing more virtual cash never reads as a drawdown, cannot halt the bot, and the
+    per-holding cap scales with the larger portfolio so the new cash can actually be used."""
+    bot = Bot(tmp_path, holdings=HELD)
+    bot.run()
+    before = bot.j.cash_base()
+    assert bot.j.topup_to(10000.0, "AUD") == 5000.0 and bot.j.cash_base() == pytest.approx(before + 5000.0)
+    # 60 x CCC = A$1,800: over the old 25% cap (~A$1,250 of 5,000) but under the new one (~A$2,500 of 10,000).
+    out = bot.run(submits(order("CCC", 60)))
+    assert out.status == "ok" and not bot.j.is_halted()
+    assert bot.j.holdings_qty().get("CCC:USD") == 60 and bot.reconciled()
+    assert bot.run().status == "ok" and bot.j.peak() >= 9000.0      # the peak catches up after two runs
+
+
 def test_model_that_never_submits_trades_nothing(tmp_path):
     """Invariant: a model looping on tools forever stops at MAX_TURNS with no trades."""
     bot = Bot(tmp_path)

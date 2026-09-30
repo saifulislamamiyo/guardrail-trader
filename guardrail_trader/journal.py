@@ -138,6 +138,39 @@ class Journal:
         self._set("base_currency", currency.upper())
         self._set("peak_base", repr(amount))
 
+    def deposits(self) -> list[tuple[str, float]]:
+        """Every virtual deposit, oldest first: (timestamp, amount in base currency)."""
+        return [(r[0], r[1]) for r in self.db.execute(
+            "SELECT ts, amount_base FROM ledger WHERE kind='DEPOSIT' ORDER BY id").fetchall()]
+
+    def total_deposits(self) -> float:
+        return sum(a for _, a in self.deposits())
+
+    def topup_to(self, target_total: float, currency: str) -> float:
+        """Deposit whatever brings total deposits up to target_total. Returns the amount deposited.
+
+        Idempotent: running it twice with the same target deposits once. Deposits are append-only, so
+        there is no withdrawal: a target below what is already deposited is an error, not a no-op.
+        The peak is left alone: it rises on its own after two consecutive runs at the higher value,
+        so a deposit can never read as a drawdown and one odd tick can't inflate the peak.
+        """
+        base = self.base_currency()
+        if not base:
+            raise RuntimeError("Budget not initialised; run `journal_cli.py init` first.")
+        if currency.upper() != base:
+            raise ValueError(f"currency {currency.upper()} does not match the journal's base currency {base}")
+        total = self.total_deposits()
+        if target_total < total - 0.005:
+            raise ValueError(f"target {target_total:,.2f} is below the {total:,.2f} already deposited; "
+                             "deposits are append-only (no withdrawals)")
+        delta = round(target_total - total, 2)
+        if delta < 0.01:
+            return 0.0
+        with self.db:
+            self.db.execute("INSERT INTO ledger(ts,kind,currency,amount_base,fx_to_base) "
+                            "VALUES(?,?,?,?,1.0)", (_now(), "DEPOSIT", base, delta))
+        return delta
+
     def cash_base(self) -> float:
         return float(self.db.execute("SELECT COALESCE(SUM(amount_base),0) FROM ledger").fetchone()[0])
 
