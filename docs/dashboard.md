@@ -23,7 +23,7 @@ seconds and follows your system theme (or use its **Theme** button).
 | Tile | Meaning |
 |---|---|
 | Portfolio value | Cash plus holdings at the last run's prices, in the base currency |
-| P/L | Against the starting capital |
+| P/L | Against the total deposited (the ledger), so a top-up is not counted as profit |
 | Cash | The bot's virtual cash (its ledger, not the whole paper account) |
 | Drawdown | Fall from the peak value, with a meter towards the kill switch |
 | Orders this month | Used vs `max_trades_per_month` |
@@ -39,7 +39,7 @@ If the kill switch has fired, a red banner shows the reset command.
 ![Value chart and holdings](assets/screenshots/value-and-holdings-light.png#only-light)
 ![Value chart and holdings](assets/screenshots/value-and-holdings-dark.png#only-dark)
 
-The chart plots the value at the end of each run against a dashed starting-capital line; hover for
+The chart plots the value at the end of each run against a dashed line of capital deposited (it steps up at each top-up); hover for
 run details. Holdings show quantity, average cost (including commission), last price, value, P/L
 and weight. Prices come from the `snapshots` the journal writes at the end of each run, so the
 dashboard needs no broker connection.

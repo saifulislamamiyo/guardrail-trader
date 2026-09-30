@@ -1,6 +1,7 @@
 """Operator CLI for the journal (operator only - the bot never calls these).
 
   .venv/bin/python scripts/journal_cli.py init                 # deposit budget from config/risk.toml (once)
+  .venv/bin/python scripts/journal_cli.py topup [--confirm]    # deposit up to `capital` in config/risk.toml (dry run without --confirm)
   .venv/bin/python scripts/journal_cli.py status               # cash, holdings, halt state, recent activity
   .venv/bin/python scripts/journal_cli.py reset-halt --confirm # re-arm after a kill switch
 """
@@ -19,6 +20,8 @@ def main() -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("init")
     sub.add_parser("status")
+    t = sub.add_parser("topup")
+    t.add_argument("--confirm", action="store_true")
     r = sub.add_parser("reset-halt")
     r.add_argument("--confirm", action="store_true")
     args = ap.parse_args()
@@ -29,6 +32,30 @@ def main() -> int:
     if args.cmd == "init":
         j.init_budget(cfg.capital, cfg.base_currency)
         print(f"Deposited {cfg.capital:,.2f} {cfg.base_currency} into the virtual ledger.")
+
+    elif args.cmd == "topup":
+        total = j.total_deposits()
+        if not j.base_currency():
+            print("Budget not initialised; run `init` first.")
+            return 2
+        if cfg.base_currency.upper() != j.base_currency():
+            print(f"config currency {cfg.base_currency} does not match the journal's {j.base_currency()}.")
+            return 2
+        if cfg.capital < total - 0.005:
+            print(f"capital {cfg.capital:,.2f} is below the {total:,.2f} already deposited; "
+                  "deposits are append-only (no withdrawals).")
+            return 2
+        delta = round(cfg.capital - total, 2)
+        if delta < 0.01:
+            print(f"Nothing to do: {total:,.2f} {cfg.base_currency} already deposited (capital = {cfg.capital:,.2f}).")
+            return 0
+        print(f"deposited so far: {total:,.2f}   capital in config: {cfg.capital:,.2f}   top-up: {delta:,.2f} {cfg.base_currency}")
+        if not args.confirm:
+            print("Dry run. Re-run with --confirm to deposit it.")
+            return 0
+        done = j.topup_to(cfg.capital, cfg.base_currency)
+        print(f"Deposited {done:,.2f} {cfg.base_currency}. Cash is now {j.cash_base():,.2f}; "
+              f"total deposited {j.total_deposits():,.2f}.")
 
     elif args.cmd == "status":
         base = j.base_currency() or "(not initialised)"

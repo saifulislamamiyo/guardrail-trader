@@ -121,3 +121,31 @@ def test_abort_stale_runs_is_idempotent(j):
     _run_started(j, 120)
     assert len(j.abort_stale_runs()) == 1
     assert j.abort_stale_runs() == []
+
+
+def test_topup_deposits_the_difference_exactly_once(j):
+    assert j.topup_to(250.0, "AUD") == 150.0                 # fixture deposited 100
+    assert j.cash_base() == pytest.approx(250.0) and j.total_deposits() == pytest.approx(250.0)
+    assert [a for _, a in j.deposits()] == [100.0, 150.0]
+    assert j.topup_to(250.0, "aud") == 0.0                   # same target again: nothing, and currency is case-blind
+    assert len(j.deposits()) == 2
+
+
+def test_topup_refuses_withdrawals_wrong_currency_and_an_uninitialised_journal(j, tmp_path):
+    with pytest.raises(ValueError, match="append-only"):
+        j.topup_to(50.0, "AUD")
+    with pytest.raises(ValueError, match="base currency"):
+        j.topup_to(500.0, "USD")
+    assert j.total_deposits() == 100.0                       # nothing slipped through
+    empty = Journal(tmp_path / "empty.sqlite")
+    with pytest.raises(RuntimeError, match="not initialised"):
+        empty.topup_to(500.0, "AUD")
+    empty.close()
+
+
+def test_topup_is_not_a_drawdown_and_cannot_inflate_the_peak_in_one_tick(j):
+    j.portfolio_state({})                                    # run 1: value 100 (all cash)
+    j.topup_to(200.0, "AUD")
+    first = j.portfolio_state({})                            # run 2: value 200, previous 100
+    assert first.peak_value_base == 100.0 and first.drawdown_pct == 0.0
+    assert j.portfolio_state({}).peak_value_base == 200.0    # run 3 confirms 200
