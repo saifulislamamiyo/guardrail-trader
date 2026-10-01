@@ -62,3 +62,77 @@ def test_start_is_configurable(monkeypatch):
 def test_bad_start_values_are_rejected(bad):
     with pytest.raises(ValueError):
         ka.start_time(bad)
+
+
+class FakeChild:
+    """Stands in for the caffeinate subprocess."""
+    def __init__(self, argv):
+        self.argv, self.alive, self.terminated = argv, True, False
+    def poll(self):
+        return None if self.alive else 0
+    def terminate(self):
+        self.alive, self.terminated = False, True
+    def wait(self, timeout=None):
+        return 0
+
+
+class FakeClock:
+    """Wall clock that only moves when the loop sleeps, plus an optional jump (the Mac sleeping)."""
+    def __init__(self, t0, jump_at=None, jump_to=None):
+        self.t, self.jump_at, self.jump_to, self.sleeps = t0, jump_at, jump_to, 0
+    def now(self):
+        return self.t
+    def sleep(self, secs):
+        self.sleeps += 1
+        self.t += secs
+        if self.jump_at is not None and self.t >= self.jump_at:
+            self.t, self.jump_at = self.jump_to, None
+
+
+def run_hold(end, clock, children):
+    def popen(argv):
+        children.append(FakeChild(argv)); return children[-1]
+    return ka.hold_until(end, popen=popen, now=clock.now, sleep=clock.sleep, poll_secs=30)
+
+
+def test_hold_has_no_caffeinate_timer_and_is_tied_to_this_process():
+    kids = []
+    run_hold(100, FakeClock(0), kids)
+    argv = kids[0].argv
+    assert "-t" not in argv                                 # -t does not advance while the Mac sleeps
+    assert argv[argv.index("-w") + 1] == str(__import__("os").getpid())   # dies with the launcher
+    assert "-i" in argv and "-s" in argv
+
+
+def test_hold_releases_caffeinate_at_the_wall_clock_end():
+    kids = []
+    clock = FakeClock(0)
+    assert run_hold(100, clock, kids) == 0
+    assert kids[0].terminated and clock.t == 100
+
+
+def test_hold_ends_promptly_when_the_mac_slept_past_the_end():
+    """The 1 Oct bug: asleep for hours, the old timer never expired. Wall clock must."""
+    kids = []
+    clock = FakeClock(0, jump_at=30, jump_to=10_000)       # sleeps after the first 30 s tick
+    run_hold(3600, clock, kids)
+    assert kids[0].terminated
+    assert clock.sleeps == 1                                # no further polling once past the end
+
+
+def test_hold_exits_if_caffeinate_dies_and_does_not_signal_a_dead_child():
+    kids = []
+    clock = FakeClock(0)
+    orig_sleep = clock.sleep
+    def sleep_then_die(secs):
+        orig_sleep(secs); kids[0].alive = False
+    clock.sleep = sleep_then_die
+    run_hold(3600, clock, kids)
+    assert not kids[0].terminated and clock.sleeps == 1
+
+
+def test_hold_restores_the_previous_sigterm_handler():
+    import signal
+    before = signal.getsignal(signal.SIGTERM)
+    run_hold(10, FakeClock(0), [])
+    assert signal.getsignal(signal.SIGTERM) is before

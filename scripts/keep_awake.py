@@ -1,7 +1,8 @@
 """Keep the Mac awake only while tonight's trading runs need it.
 
 Called by launchd (com.guardrail-trader.awake) at the start time, at load, and again on wake if
-the start time was missed while asleep. Window:
+the start time was missed while asleep. It stays running (holding a `caffeinate -i -s` child) and
+exits at the end time by the wall clock. Window:
     start  KEEP_AWAKE_START local time (HH:MM, default 18:00)
     end    16:00 America/New_York  (45 min after the 15:00-15:40 "close" slot)
 The end follows both daylight-saving changes automatically:
@@ -11,13 +12,17 @@ block /usr/bin/python3 from ~/Documents under launchd).
 """
 import os
 import re
+import signal
+import subprocess
 import sys
+import time as _time
 from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 NY = ZoneInfo("America/New_York")
 DEFAULT_START = "18:00"
 END_NY = time(16, 0)
+POLL_SECS = 30  # wall-clock check interval while holding; also the max overrun after a sleep
 MAX_HOURS = 16  # sanity guard; an 18:00 start runs up to 14 h (to 08:00 Sydney when US is on EST)
 
 
@@ -46,6 +51,33 @@ def seconds_to_keep_awake(now_local: datetime, start: time | None = None) -> int
     return secs
 
 
+def hold_until(end_ts: float, *, popen=subprocess.Popen, now=_time.time, sleep=_time.sleep,
+               poll_secs: float = POLL_SECS) -> int:
+    """Hold the Mac awake until the wall clock reaches end_ts, then release.
+
+    `caffeinate -t` is not used: its timer does not advance while the Mac sleeps, so a night spent
+    asleep leaves a stale caffeinate (and a launchd job stuck in "running") that blocks the next
+    evening's start. Here caffeinate has no timer; this process polls the wall clock, which does
+    advance during sleep, and ends it. `-w <our pid>` makes caffeinate exit if we are killed.
+    """
+    child = popen(["/usr/bin/caffeinate", "-i", "-s", "-w", str(os.getpid())])
+
+    def _stop(*_):                      # launchd stop / kill: release the assertion, then leave
+        child.terminate()
+        raise SystemExit(0)
+
+    previous = signal.signal(signal.SIGTERM, _stop)
+    try:
+        while now() < end_ts and child.poll() is None:
+            sleep(max(0.0, min(poll_secs, end_ts - now())))
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+        if child.poll() is None:
+            child.terminate()
+            child.wait(timeout=5)
+    return 0
+
+
 def main() -> int:
     now = datetime.now().astimezone()
     secs = seconds_to_keep_awake(now)
@@ -54,7 +86,7 @@ def main() -> int:
         return 0
     until = now + timedelta(seconds=secs)
     print(f"{now:%a %H:%M} keeping the Mac awake until {until:%a %H:%M} ({secs // 60} min)", flush=True)
-    os.execv("/usr/bin/caffeinate", ["caffeinate", "-i", "-s", "-t", str(secs)])
+    return hold_until(until.timestamp())
 
 
 if __name__ == "__main__":
