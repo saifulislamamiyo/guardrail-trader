@@ -1,7 +1,7 @@
 # guardrail-trader: bot (supercronic scheduler) and dashboard share this image.
 #   docker compose build
 # Pinned by digest (Dependabot bumps it). Tag kept for readability.
-FROM python:3.13-slim@sha256:8d9d0b8bcf6506481eae4907c18f5e3e7902e629f5f6d684f9e7c32e85e3ddf0
+FROM python:3.14-slim@sha256:51dafde81dbdb6ebde285137a295cf18a47ca95234fe388a343719cb97305b3d
 
 ARG TARGETARCH
 ARG SUPERCRONIC_VERSION=v0.2.49
