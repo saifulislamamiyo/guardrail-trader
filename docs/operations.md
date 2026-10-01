@@ -27,8 +27,10 @@ All three use the project's **venv Python**, and write logs to `logs/<label>.log
 
 ### Keep-awake window
 
-[`keep_awake.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/scripts/keep_awake.py) computes how long to stay awake, then replaces itself with
-`caffeinate -i -s -t <seconds>`:
+[`keep_awake.py`](https://github.com/saifulislamamiyo/guardrail-trader/blob/main/scripts/keep_awake.py) computes how long to stay awake, then holds a
+`caffeinate -i -s -w <its pid>` child and releases it when the **wall clock** reaches the end time. It deliberately
+does not use `caffeinate -t`: that timer doesn't advance while the Mac sleeps, so after a night asleep the old
+caffeinate (and launchd's "running" job) lingered and blocked the next evening's start:
 
 - From `KEEP_AWAKE_START` (default **18:00** local) until **16:00 New York** (after the close slot), on evenings
   before a US trading day. Change it with `KEEP_AWAKE_START=19:30 scripts/launchd.sh docker-mode` (or `install`).
