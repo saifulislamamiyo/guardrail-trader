@@ -15,6 +15,7 @@ import sys
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlsplit
 
 from guardrail_trader import dashboard_data
 from guardrail_trader.config import PROJECT_ROOT
@@ -55,12 +56,17 @@ class Handler(BaseHTTPRequestHandler):
         if (self.headers.get("Host") or "").lower() not in self.allowed:
             return self._send(403, b"forbidden host", "text/plain")
         try:
-            if self.path in ("/", "/index.html"):
+            url = urlsplit(self.path)
+            if url.path in ("/", "/index.html"):
                 return self._send(200, HTML.read_bytes(), "text/html; charset=utf-8")
-            if self.path == "/api/data":
+            if url.path == "/api/data":
+                try:                       # ?days=2 (default) | ?days=7 | ?days=all
+                    days = dashboard_data.parse_days(parse_qs(url.query).get("days", [None])[0])
+                except ValueError as e:
+                    return self._send(400, json.dumps({"error": str(e)}).encode(), "application/json")
                 j = Journal()
                 try:
-                    return self._json(dashboard_data.build(j, load_risk_config()))
+                    return self._json(dashboard_data.build(j, load_risk_config(), days))
                 finally:
                     j.close()
             m = re.fullmatch(r"/api/transcript/(\d+)", self.path)
