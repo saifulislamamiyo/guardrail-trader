@@ -68,6 +68,87 @@ def test_holdings_pnl_and_decisions(j):
     assert d["runs"][0]["approved"] == 1 and d["runs"][0]["blocked"] == 1
 
 
+def _run_at(j, ts, symbol):
+    """One run with a proposal and a fill, all timestamps pinned (they default to 'now', whole seconds)."""
+    run = j.start_run("paper")
+    p = Proposal(symbol, "SMART", "USD", "BUY", 1, 10.0, reason=f"buy {symbol}")
+    j.record_decision(run, Decision(p, True, [], 10.0, 1.0))
+    j.record_fill(symbol, "USD", "BUY", 1, 10.0, commission=1.0, fx_to_base=1.0)
+    j.finish_run(run, "ok", PortfolioState(j.cash_base(), {}, 5000.0), f"bought {symbol}")
+    with j.db:
+        j.db.execute("UPDATE runs SET started_at=?, finished_at=? WHERE id=?", (ts, ts, run))
+        j.db.execute("UPDATE proposals SET ts=? WHERE run_id=?", (ts, run))
+        j.db.execute("UPDATE ledger SET ts=? WHERE id=(SELECT MAX(id) FROM ledger)", (ts,))
+    return run
+
+
+@pytest.fixture
+def week(j):
+    """Sydney timestamps. US/Eastern dates: Thu 24 Sep, Fri 25 Sep, then Mon 28 Sep (open AND close slot)."""
+    return {
+        "thu": _run_at(j, "2026-09-25T00:30:01+10:00", "AAA"),
+        "fri": _run_at(j, "2026-09-26T00:30:01+10:00", "BBB"),
+        "mon_open": _run_at(j, "2026-09-29T00:30:01+10:00", "CCC"),
+        "mon_close": _run_at(j, "2026-09-29T05:00:01+10:00", "DDD"),
+    }
+
+
+def _ids(d):
+    return {r["id"] for r in d["runs"]}, {x["symbol"] for x in d["decisions"]}, {f["symbol"] for f in d["fills"]}
+
+
+def test_tables_default_to_the_last_two_trading_days(j, week):
+    d = dashboard_data.build(j, CFG)
+    assert _ids(d) == ({week["fri"], week["mon_open"], week["mon_close"]}, {"BBB", "CCC", "DDD"}, {"BBB", "CCC", "DDD"})
+    w = d["window"]
+    assert (w["days"], w["since"], w["until"], w["available_days"]) == (2, "2026-09-25", "2026-09-28", 3)
+    assert w["shown"] == {"runs": 3, "decisions": 3, "fills": 3}
+    assert w["totals"] == {"runs": 4, "decisions": 4, "fills": 4}
+
+
+def test_open_and_close_slots_share_one_trading_day_and_weekends_cost_nothing(j, week):
+    d = dashboard_data.build(j, CFG, days=1)               # Monday only: both slots, and the gap over the weekend
+    assert _ids(d)[0] == {week["mon_open"], week["mon_close"]}
+    assert d["window"]["since"] == d["window"]["until"] == "2026-09-28"
+
+
+def test_a_trading_day_is_the_us_eastern_date_not_the_sydney_one(j):
+    a = _run_at(j, "2026-09-28T23:00:01+10:00", "EEE")     # Sydney Mon 23:00 = NY Mon 09:00
+    b = _run_at(j, "2026-09-29T05:00:01+10:00", "FFF")     # Sydney Tue 05:00 = NY Mon 15:00: same session
+    c = _run_at(j, "2026-09-27T05:00:01+10:00", "GGG")     # Sydney Sun 05:00 = NY Sat 15:00: the day before
+    d = dashboard_data.build(j, CFG, days=1)
+    assert _ids(d)[0] == {a, b} and c not in _ids(d)[0]
+
+
+def test_days_none_shows_everything_and_a_big_window_is_the_same(j, week):
+    everything = _ids(dashboard_data.build(j, CFG, days=None))
+    assert everything == ({*week.values()}, {"AAA", "BBB", "CCC", "DDD"}, {"AAA", "BBB", "CCC", "DDD"})
+    assert _ids(dashboard_data.build(j, CFG, days=30)) == everything
+
+
+def test_window_only_affects_the_tables_not_the_chart_or_kpis(j, week):
+    small, full = dashboard_data.build(j, CFG, days=1), dashboard_data.build(j, CFG, days=None)
+    assert small["value_series"] == full["value_series"] and len(small["value_series"]) == 4
+    assert small["kpis"] == full["kpis"] and small["holdings"] == full["holdings"]
+
+
+def test_window_with_no_runs_is_empty_not_an_error(j):
+    w = dashboard_data.build(j, CFG)["window"]
+    assert w["available_days"] == 0 and w["since"] is None and w["until"] is None
+    assert w["shown"] == {"runs": 0, "decisions": 0, "fills": 0}
+
+
+@pytest.mark.parametrize("raw,expected", [(None, 2), ("", 2), ("1", 1), ("30", 30), ("all", None)])
+def test_parse_days(raw, expected):
+    assert dashboard_data.parse_days(raw) == expected
+
+
+@pytest.mark.parametrize("bad", ["0", "-1", "2.5", "abc", "99999", "ALL", "2; DROP TABLE runs"])
+def test_parse_days_rejects_junk(bad):
+    with pytest.raises(ValueError):
+        dashboard_data.parse_days(bad)
+
+
 def test_dashboard_rejects_foreign_host_headers(monkeypatch):
     """DNS rebinding: only localhost Host headers are served."""
     import importlib.util

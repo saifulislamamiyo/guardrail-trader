@@ -44,6 +44,19 @@ run details. Holdings show quantity, average cost (including commission), last p
 and weight. Prices come from the `snapshots` the journal writes at the end of each run, so the
 dashboard needs no broker connection.
 
+## Time window for the tables
+
+Decisions, Runs and Fills start with the **latest 2 trading days** and share one window. The bar above
+Decisions says what is shown (`Decisions 5 of 18 · Runs 4 of 28 · Fills 5 of 11`) and has **Show 2 more
+days**, **Show all** and **Back to 2 days**.
+
+- A trading day is a US/Eastern calendar date that has at least one run, so the open and close slots share
+  a day and weekends or holidays don't use up the window.
+- The window only affects those three tables. The value chart, KPIs and holdings always use the full history.
+- The same window is available from the API: `/api/data?days=2` (default), `?days=7`, `?days=all`. Anything
+  else returns HTTP 400. "All" is capped at 5,000 rows per table.
+- It resets to 2 days when the page is reloaded. The 60 s auto-refresh keeps the window you chose.
+
 ## Decisions
 
 ![Decisions](assets/screenshots/decisions-light.png#only-light)

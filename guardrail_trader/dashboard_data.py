@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from guardrail_trader import llm
 from guardrail_trader.config import PROJECT_ROOT
@@ -21,7 +22,40 @@ def _avg_costs(j: Journal) -> dict[str, float]:
     return j.avg_costs()
 
 
-def build(j: Journal, cfg: RiskConfig) -> dict:
+DEFAULT_DAYS = 2        # trading days the Decisions / Runs / Fills tables start with
+MAX_DAYS = 3650
+ROW_CAP = 5000          # safety bound for "all"; the tables are small (a few rows per run)
+NY = ZoneInfo("America/New_York")
+
+
+def parse_days(value: str | None) -> int | None:
+    """`?days=` query value -> number of trading days, or None for all. Bad input is an error, not a default."""
+    if value is None or value == "":
+        return DEFAULT_DAYS
+    if value == "all":
+        return None
+    if not value.isdigit() or not 1 <= int(value) <= MAX_DAYS:
+        raise ValueError(f"days must be 1-{MAX_DAYS} or 'all', got {value!r}")
+    return int(value)
+
+
+def _trading_day(ts: str | None) -> str | None:
+    """US/Eastern calendar date of an ISO timestamp: the bot's own 'session day' (open + close slots share one)."""
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts).astimezone(NY).date().isoformat()
+    except ValueError:
+        return None
+
+
+def _window(runs: list[dict], days: int | None) -> tuple[set[str] | None, list[str]]:
+    """The most recent `days` trading days that have runs (gaps like weekends don't use up the budget)."""
+    all_days = sorted({d for r in runs if (d := _trading_day(r["started_at"]))}, reverse=True)
+    return (None if days is None else set(all_days[:days])), all_days
+
+
+def build(j: Journal, cfg: RiskConfig, days: int | None = DEFAULT_DAYS) -> dict:
     runs = _rows(j, "SELECT * FROM runs ORDER BY id")
     deposits = j.deposits()
     deposited = sum(a for _, a in deposits)
@@ -65,8 +99,12 @@ def build(j: Journal, cfg: RiskConfig) -> dict:
     counts = {r["run_id"]: r for r in _rows(
         j, "SELECT run_id, SUM(approved) approved, COUNT(*) - SUM(approved) blocked FROM proposals GROUP BY run_id")}
 
+    keep, all_days = _window(runs, days)
+    run_day = {r["id"]: _trading_day(r["started_at"]) for r in runs}
+    shown_runs = [r for r in runs if keep is None or run_day[r["id"]] in keep]
+
     run_list = []
-    for r in reversed(runs[-100:]):
+    for r in reversed(shown_runs[-ROW_CAP:]):
         u, c = llm_by_run.get(r["id"], {}), counts.get(r["id"], {})
         run_list.append({**r, "llm_cost_usd": u.get("cost"), "model": u.get("model"),
                          "tokens_in": u.get("tin"), "tokens_out": u.get("tout"), "tokens_cached": u.get("tcache"),
@@ -78,12 +116,16 @@ def build(j: Journal, cfg: RiskConfig) -> dict:
                p.approved, p.block_reasons, p.notional_base, p.est_commission_base, r.mode,
                o.status AS order_status, o.filled, o.avg_fill_price
         FROM proposals p JOIN runs r ON r.id = p.run_id LEFT JOIN orders o ON o.proposal_id = p.id
-        ORDER BY p.id DESC LIMIT 200""")
+        ORDER BY p.id DESC LIMIT ?""", (ROW_CAP,))
+    n_decisions = j.db.execute("SELECT COUNT(*) FROM proposals").fetchone()[0]
+    decisions = [d for d in decisions if keep is None or run_day.get(d["run_id"]) in keep]
     for d in decisions:
         d["block_reasons"] = json.loads(d["block_reasons"] or "[]")
 
     fills = _rows(j, "SELECT ts, kind, symbol, currency, quantity, price, commission, fx_to_base, amount_base, "
-                     "broker_order_id FROM ledger WHERE kind IN ('BUY','SELL') ORDER BY id DESC LIMIT 200")
+                     "broker_order_id FROM ledger WHERE kind IN ('BUY','SELL') ORDER BY id DESC LIMIT ?", (ROW_CAP,))
+    n_fills = j.db.execute("SELECT COUNT(*) FROM ledger WHERE kind IN ('BUY','SELL')").fetchone()[0]
+    fills = [f for f in fills if keep is None or _trading_day(f["ts"]) in keep]
 
     llm_months = _rows(j, "SELECT substr(ts,1,7) month, SUM(cost_usd) cost, COUNT(DISTINCT run_id) runs, "
                           "SUM(input_tokens) tin, SUM(output_tokens) tout FROM llm_usage GROUP BY month ORDER BY month")
@@ -116,6 +158,15 @@ def build(j: Journal, cfg: RiskConfig) -> dict:
         "value_series": [{"ts": r["finished_at"] or r["started_at"], "value": r["value_base"],
                           "mode": r["mode"], "status": r["status"], "run_id": r["id"]} for r in valued],
         "holdings": holdings,
+        # What the Decisions / Runs / Fills tables cover: the latest `days` trading days that have runs
+        # (US/Eastern dates). days=None means everything. The value chart and KPIs are never windowed.
+        "window": {
+            "days": days, "available_days": len(all_days),
+            "since": min(keep) if keep else (all_days[-1] if all_days else None),
+            "until": all_days[0] if all_days else None,
+            "shown": {"runs": len(run_list), "decisions": len(decisions), "fills": len(fills)},
+            "totals": {"runs": len(runs), "decisions": n_decisions, "fills": n_fills},
+        },
         "runs": run_list,
         "decisions": decisions,
         "fills": fills,
